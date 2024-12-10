@@ -1,0 +1,329 @@
+I am trying to modify this code code, to adapt it to my own problem. My problem is an inverse problem which x is initial atomic positions and y is final momenta. poth positions and momentas are 9 vector including 3 atoms (c,o,s) in 3 axes (x,y,z). they are defined as below:
+    data = pd.read_csv(file_path)
+    position = data[['cx', 'cy', 'cz', 'ox', 'oy', 'oz', 'sx', 'sy', 'sz']].values
+    momenta = data[['pcx', 'pcy', 'pcz', 'pox', 'poy', 'poz', 'psx', 'psy', 'psz']].values
+I want to modify this CINN model in python which is based on the paper :"Inverse design of two-dimensional materials with invertible neural networks Victor Fung , Jiaxin Zhang , Guoxiang Hu , P. Ganesh  and Bobby G. Sumpter " and adapt it so I could use it to solve my problem. I want to use a latent representation of position as input and condition on momenta and create a CINN model with invertible network and conditioning block to solve my problem.
+
+
+project/
+│
+├── data_preparation.py
+├── config.py
+├── losses.py
+├── model_setup.py
+├── train.py
+
+# data_preparation.py
+
+import pandas as pd
+from sklearn.model_selection import train_test_split
+import torch
+from torch.utils.data import DataLoader, TensorDataset
+
+def load_data(file_path, batch_size=500, test_size=0.2, random_state=42):
+    """
+    Loads the dataset from a CSV file, splits it into training and testing sets,
+    and creates DataLoader objects for each.
+
+    Args:
+        file_path (str): Path to the CSV file containing the data.
+        batch_size (int): Number of samples per batch.
+        test_size (float): Proportion of the dataset to include in the test split.
+        random_state (int): Random seed for reproducibility.
+
+    Returns:
+        tuple: (train_loader, test_loader)
+    """
+    # Load data
+    data = pd.read_csv(file_path)
+
+    # Extract positions and momenta
+    position = data[['cx', 'cy', 'cz', 'ox', 'oy', 'oz', 'sx', 'sy', 'sz']].values
+    momenta = data[['pcx', 'pcy', 'pcz', 'pox', 'poy', 'poz', 'psx', 'psy', 'psz']].values
+
+    # Split into training and testing sets
+    x_train_np, x_test_np, y_train_np, y_test_np = train_test_split(
+        position, momenta, test_size=test_size, random_state=random_state
+    )
+
+    # Convert to PyTorch tensors
+    x_train = torch.tensor(x_train_np, dtype=torch.float32)
+    y_train = torch.tensor(y_train_np, dtype=torch.float32)
+    x_test = torch.tensor(x_test_np, dtype=torch.float32)
+    y_test = torch.tensor(y_test_np, dtype=torch.float32)
+
+    # Create DataLoaders
+    train_loader = DataLoader(
+        TensorDataset(x_train, y_train),
+        batch_size=batch_size, shuffle=True, drop_last=True
+    )
+
+    test_loader = DataLoader(
+        TensorDataset(x_test, y_test),
+        batch_size=batch_size, shuffle=False, drop_last=True
+    )
+
+    return train_loader, test_loader
+
+# Example usage:
+if __name__ == "__main__":
+    file_path = '/home/g/ghanaatian/MYFILES/FALL24/Physics/Fifth/cei_traning_orient_1.csv'
+    train_loader, test_loader = load_data(file_path)
+    print("Data loaders created successfully.")
+
+
+# config.py
+
+import torch
+
+######################
+#  General settings  #
+######################
+lambda_mse = 0.1
+grad_clamp = 15
+eval_test = 10  # Evaluate every 10 epochs
+
+# Compute device
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+#######################
+#  Training schedule  #
+#######################
+
+lr_init = 1.0e-3
+batch_size = 500
+n_epochs = 1000
+pre_low_lr = 0
+final_decay = 0.02
+l2_weight_reg = 1e-5
+adam_betas = (0.9, 0.95)
+
+#####################
+#  Data dimensions  #
+#####################
+
+ndim_x = 9      # Initial positions (cx, cy, cz, ox, oy, oz, sx, sy, sz)
+ndim_y = 9      # Final momenta (pcx, pcy, pcz, pox, poy, poz, psx, psy, psz)
+ndim_z = 0      # Latent dimensions (if any, set to 0 if not used)
+ndim_pad_zy = 0 # Padding dimensions (if any)
+
+train_forward_mmd = False  # Not using MMD in this setup
+train_backward_mmd = False
+train_reconstruction = False
+train_max_likelihood = True  # Using Maximum Likelihood Estimation
+
+lambd_fit_forw = 0
+lambd_mmd_forw = 0
+lambd_reconstruct = 0
+lambd_mmd_back = 0
+lambd_max_likelihood = 1
+
+# Noise parameters (adjust if needed)
+add_y_noise = 5e-3
+add_z_noise = 2e-3
+add_pad_noise = 1e-3
+zeros_noise_scale = 5e-3
+
+# MMD parameters (not used if MMD training is disabled)
+y_uncertainty_sigma = 0.12 * 4
+mmd_forw_kernels = [(0.2, 2), (1.5, 2), (3.0, 2)]
+mmd_back_kernels = [(0.2, 0.1), (0.2, 0.5), (0.2, 2)]
+mmd_back_weighted = False
+
+###########
+#  Model  #
+###########
+
+init_scale = 0.10
+N_blocks = 6
+exponent_clamping = 2.0
+hidden_layer_sizes = 256
+use_permutation = True
+verbose_construction = False
+
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from FrEIA.framework import ReversibleGraphNet, InputNode, OutputNode, Node
+from FrEIA.modules import AllInOneBlock  # Use this instead of F_fully_connected
+
+# Define CondNet: Feed-forward network for conditional input (momenta)
+class CondNet(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super(CondNet, self).__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)  # No activation on the last layer
+        return x
+
+# Function to add conditional block to CINN model
+def add_conditioning_block(model, cond_net):
+    # Wrapper model to apply conditioning from CondNet
+    class ConditionalCINN(nn.Module):
+        def __init__(self, base_model, conditioning_net):
+            super(ConditionalCINN, self).__init__()
+            self.base_model = base_model
+            self.cond_net = conditioning_net
+
+        def forward(self, x, y_condition):
+            # Pass the condition through CondNet
+            cond_output = self.cond_net(y_condition)
+            # Forward pass through reversible graph network with the conditional output
+            return self.base_model(x, c=[cond_output])
+
+    # Return the model with conditional network integrated
+    return ConditionalCINN(model, cond_net)
+
+# Example CINN Setup
+def create_cinn_model(c):
+    nodes = []
+
+    # Input node
+    nodes.append(InputNode(c.ndim_x, name='input'))
+
+    # Use AllInOneBlock instead of F_fully_connected
+    for i in range(c.N_blocks):
+        # AllInOneBlock requires the input/output dimensions, and you can pass options
+        nodes.append(Node(nodes[-1], AllInOneBlock, {'permute_soft': True}, name=f'all_in_one_{i}'))
+
+    # Output node
+    nodes.append(OutputNode(nodes[-1], name='output'))
+
+    # Initialize the conditional network (CondNet)
+    cond_net = CondNet(input_dim=9, hidden_dim=c.hidden_layer_sizes, output_dim=9)
+
+    # Initialize the base reversible network
+    model = ReversibleGraphNet(nodes, verbose=c.verbose_construction)
+
+    # Combine the base model with the conditional network
+    model = add_conditioning_block(model, cond_net)
+
+    return model
+
+
+# losses.py
+
+import torch
+import config as c
+
+def loss_max_likelihood(z, jacobian):
+    """
+    Computes the negative log-likelihood loss.
+
+    Args:
+        z (torch.Tensor): Latent variable after transformation.
+        jacobian (torch.Tensor): Log-determinant of the Jacobian.
+
+    Returns:
+        torch.Tensor: Computed loss.
+    """
+    zz = torch.sum(z ** 2, dim=1)
+    neg_log_likeli = 0.5 * zz - jacobian
+    loss = c.lambd_max_likelihood * torch.mean(neg_log_likeli)
+    return loss
+
+
+import model_setup as ms
+import losses
+import config as c
+import torch
+from tqdm import tqdm
+
+def train_epoch():
+    # Create the model by calling create_cinn_model from model_setup
+    model = ms.create_cinn_model(c)
+
+    # Move the model to the appropriate device
+    model = model.to(c.device)
+
+    # Define optimizer and scheduler (assuming they are set in config)
+    optimizer = torch.optim.Adam(model.parameters(), lr=c.lr_init, betas=c.adam_betas)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+
+    # Store the optimizer and scheduler in the model for later reference
+    model.optimizer = optimizer
+    model.scheduler = scheduler
+
+    # Progress bar for epochs
+    for epoch in range(c.n_epochs):
+        model.train()
+        train_loss = 0.0
+
+        # Progress bar for training batches
+        for x_batch, y_batch in tqdm(c.train_loader, desc=f'Epoch {epoch+1}/{c.n_epochs}'):
+            x_batch = x_batch.to(c.device)
+            y_batch = y_batch.to(c.device)
+
+            model.optimizer.zero_grad()
+
+            # Forward pass: Transform x given y
+            z, jacobian = model(x_batch, y_batch)
+
+            # Compute loss using the MLE loss function
+            loss = losses.loss_max_likelihood(z, jacobian)
+            loss.backward()
+
+            # Gradient Clipping to prevent exploding gradients
+            torch.nn.utils.clip_grad_norm_(model.parameters(), c.grad_clamp)
+
+            # Optimization step
+            model.optimizer.step()
+
+            train_loss += loss.item()
+
+        # Average training loss
+        avg_train_loss = train_loss / len(c.train_loader)
+
+        # Evaluation every 'eval_test' epochs
+        if (epoch + 1) % c.eval_test == 0:
+            model.eval()
+            test_loss = 0.0
+
+            with torch.no_grad():
+                for x_batch, y_batch in c.test_loader:
+                    x_batch = x_batch.to(c.device)
+                    y_batch = y_batch.to(c.device)
+
+                    z, jacobian = model(x_batch, y_batch)
+                    loss = losses.loss_max_likelihood(z, jacobian)
+                    test_loss += loss.item()
+
+            avg_test_loss = test_loss / len(c.test_loader)
+            print(f"Epoch {epoch+1}: Train Loss = {avg_train_loss:.5f}, Test Loss = {avg_test_loss:.5f}")
+
+        # Step the learning rate scheduler
+        model.scheduler.step()
+
+    # Save the trained model after all epochs
+    torch.save(model.state_dict(), 'cinn_model.pth')
+    print("Training complete and model saved.")
+
+if __name__ == "__main__":
+    train_epoch()
+
+
+
+right now I'm getting this error:
+python3 train.py 
+Traceback (most recent call last):
+  File "/home/g/ghanaatian/MYFILES/FALL24/Physics/8thGitCinn/V1/train.py", line 77, in <module>
+    train_epoch()
+  File "/home/g/ghanaatian/MYFILES/FALL24/Physics/8thGitCinn/V1/train.py", line 9, in train_epoch
+    model = ms.create_cinn_model(c)
+  File "/home/g/ghanaatian/MYFILES/FALL24/Physics/8thGitCinn/V1/model_setup.py", line 49, in create_cinn_model
+    nodes.append(Node(nodes[-1], AllInOneBlock, {'permute_soft': True}, name=f'all_in_one_{i}'))
+  File "/home/g/ghanaatian/LAB/lib/python3.10/site-packages/FrEIA/framework/graph_inn.py", line 49, in __init__
+    self.module, self.output_dims = self.build_module(condition_shapes,
+  File "/home/g/ghanaatian/LAB/lib/python3.10/site-packages/FrEIA/framework/graph_inn.py", line 73, in build_module
+    module = self.module_type(input_shapes, **self.module_args)
+  File "/home/g/ghanaatian/LAB/lib/python3.10/site-packages/FrEIA/modules/all_in_one_block.py", line 165, in __init__
+    raise ValueError("Please supply a callable subnet_constructor"
+ValueError: Please supply a callable subnet_constructorfunction or object (see docstring)
+
+

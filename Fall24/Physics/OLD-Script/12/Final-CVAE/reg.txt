@@ -1,0 +1,56 @@
+CVAE MODEL1:
+
+
+BASE:
+Mean Relative Error : 0.69
+
+L1 regularization:
+Best L1_LAMBDA : 0.0001 (1e-4)
+Mean Relative Error : 0.659
+
+L2 regularization:
+Best L2_LAMBDA : 0.05
+Test MRE : 0.653
+
+Dropout:
+Best Dropout Rate : 0.1
+Mean Relative Error : 0.6724599003791809
+
+
+CVAE MODEL3:
+
+
+BASE:
+Mean Relative Error : 0.77
+
+L1 regularization:
+Best L1_LAMBDA : 1e-11
+Mean Relative Error : 0.813
+
+L2 regularization:
+Best L2_LAMBDA : 1e-09
+Mean Relative Error : 0.797
+
+Dropout:
+Best Dropout Rate : 0.3
+Mean Relative Error : 0.743
+
+
+CVAE MODEL4:
+
+
+BASE:
+Mean Relative Error : 0.72
+
+L1 regularization:
+Best L1_LAMBDA : 1e-07
+Mean Relative Error : 0.7327
+
+
+L2 regularization:
+Best L2_LAMBDA : 1e-08
+Mean Relative Error: 0.7330
+
+Dropout:
+Best Dropout Rate : 0.1
+Mean Relative Error : 0.8535

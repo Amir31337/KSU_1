@@ -1,0 +1,156 @@
+To adapt the Conditional Invertible Neural Network (CINN) from the paper to a **physics inverse problem** where you want to reconstruct **initial positions** using **final momenta** as conditions, you can modify the framework as follows based on the methodology in the paper:
+
+### Key Components for Application to Physics Problem
+
+1. **Inverse Problem Setup**:
+   - **Initial positions** \( x_0 \) are the unknowns you want to reconstruct.
+   - **Final momenta** \( p_T \) are the observations used as conditions.
+   - The forward operator \( S \) would represent the dynamics of the system that map initial positions \( x_0 \) to final momenta \( p_T \) after a given time period. This forward process can be written as:
+   
+   \[
+   p_T = S(x_0) + e
+   \]
+   where \( e \) represents noise or uncertainty in the observations.
+
+2. **Training Data Generation**:
+   - To train the CINN, you need pairs of initial positions \( x_0^{(i)} \) and final momenta \( p_T^{(i)} \). These could be generated from simulations or experimental data based on the physics of the system.
+   - The training data \( D = \{x_0^{(i)}, p_T^{(i)}\}_{i=1}^{N} \) is used to train the CINN model, where the **conditional network** learns to map from noisy, sparse final momenta \( p_T \) to a feature representation that the **invertible network** uses to reconstruct \( x_0 \).
+
+3. **Flow-Based Generative Model**:
+   - Use a **normalizing flow** to model the distribution of the initial positions \( p(x_0) \). The flow-based model, as described in the paper, will learn the relationship between the simple latent variable space \( z \) and the complex distribution of initial positions \( x_0 \). This is achieved through a series of invertible transformations that are trained using the data pairs \( \{x_0^{(i)}, p_T^{(i)}\} \).
+
+4. **CINN Architecture**:
+   - The CINN consists of two networks: 
+     - The **Conditional Network** processes the observed final momenta \( p_T \) and provides conditional inputs at multiple scales to the invertible network.
+     - The **Invertible Network** transforms between the initial positions \( x_0 \) and a latent space \( z \), which can be sampled from a simple distribution (e.g., Gaussian).
+
+5. **Multiscale Conditioning**:
+   - Since your problem involves mapping from sparse observations (final momenta) to initial positions, the **conditioning network** would process the momenta at different scales. For example, you might represent the momenta as vectors or scalar values depending on the dimensionality of the problem and feed them into the conditional blocks of the network at multiple feature sizes.
+   - The conditional blocks would extract relevant features from the final momenta to guide the reconstruction of the initial positions by the invertible network.
+
+6. **Inverse Mapping Process**:
+   - During testing (inversion), you will input the observed final momenta \( p_T \) into the conditional network, which will generate conditional inputs at different scales.
+   - Simultaneously, you will sample from the latent space \( z \) and pass it through the invertible network, conditioned on the features from the final momenta.
+   - The network will output samples of the reconstructed initial positions \( \hat{x_0} \), allowing you to estimate the initial conditions that could have led to the observed momenta.
+
+### Steps for Implementation:
+
+1. **Define the Forward Operator** \( S \) for the system's dynamics, which maps \( x_0 \) (initial positions) to \( p_T \) (final momenta).
+2. **Generate Training Data**: Create a dataset of \( N \) pairs \( D = \{x_0^{(i)}, p_T^{(i)}\} \) by simulating the system’s evolution from initial positions to final momenta.
+3. **CINN Setup**:
+   - Construct the **Conditional Network** to process the final momenta \( p_T \) and provide conditional inputs at different scales.
+   - Design the **Invertible Network** using a real-valued non-volume-preserving (Real NVP) flow-based model. The invertible network should be capable of mapping between the latent space \( z \) and the initial positions \( x_0 \).
+4. **Training**:
+   - Train the CINN using the dataset \( D \) by minimizing the loss function (as described in the paper) that includes terms for both the forward and inverse passes. The model learns to generate the initial positions \( x_0 \) conditioned on the final momenta \( p_T \).
+5. **Inference**:
+   - After training, for a given set of final momenta \( p_T \), sample from the latent space \( z \) and use the invertible network to reconstruct possible initial positions \( x_0 \). The CINN provides not just a single estimate but a distribution over possible initial conditions, allowing you to quantify uncertainty in the reconstruction.
+
+By applying these steps, you can effectively use the CINN architecture from the paper to reconstruct initial positions from final momenta, leveraging the power of invertible neural networks for efficient inversion with uncertainty quantification【23†source】【15†source】 .
+
+
+
+# Reconstructing Atomic Positions using a Conditional Invertible Neural Network (CINN)
+
+## Problem Overview
+The problem at hand is to reconstruct the initial positions of atoms before a Coulomb explosion given the final momenta of the atomic fragments. The dataset consists of simulated behavior of atomic fragments under Coulomb explosion, stored in a CSV file with labeled columns for initial positions and final momenta of each atom.
+
+The CSV file structure is as follows:
+- Initial Atomic Positions: x, y, z coordinates for Carbon, Oxygen, and Sulfur
+- Final Atomic Momenta: px, py, pz for each atom
+
+Each row in the CSV file represents a single simulated geometry.
+
+The goal is to train a model that learns the relationship between the final momenta and the initial atomic positions. The reconstructed positions provide insights into the pre-explosion geometry.
+
+## Conditional Invertible Neural Network (CINN)
+A Conditional Invertible Neural Network (CINN) is used to solve this inverse problem. CINNs are a class of generative models that learn a bijective mapping between the data space and a latent space, conditioned on some additional information.
+
+In this case, the CINN is trained to map the initial atomic positions (X) to a latent space (Z), conditioned on the final momenta (Y). The model consists of an encoder, a decoder, and a series of coupling layers that form the invertible transformation.
+
+### Encoder
+The encoder takes the initial atomic positions (X) as input and produces the parameters (mean and log-variance) of a Gaussian distribution in the latent space (Z). The encoder is only used during the training phase to learn the mapping from the data space to the latent space.
+
+### Decoder
+The decoder takes a sample from the latent space (Z) and the final momenta (Y) as input and reconstructs the initial atomic positions (X). The decoder is used during both the training and testing phases.
+
+### Coupling Layers
+The CINN consists of a series of coupling layers that form the invertible transformation between the data space and the latent space. Each coupling layer splits the input into two parts, applies a transformation to one part conditioned on the other part and the final momenta (Y), and then concatenates the transformed part with the unchanged part.
+
+During the forward pass (encoding), the coupling layers map the initial atomic positions (X) to the latent space (Z). During the backward pass (decoding), the coupling layers map the latent space (Z) back to the initial atomic positions (X), conditioned on the final momenta (Y).
+
+## Training Phase
+During the training phase, the model learns the mapping between the initial atomic positions (X) and the latent space (Z), conditioned on the final momenta (Y). The encoder is used to obtain the parameters of the latent distribution, and the decoder is used to reconstruct the initial atomic positions.
+
+The loss function consists of two parts:
+1. Reconstruction Loss: Measures the difference between the reconstructed atomic positions and the true initial positions using Mean Squared Error (MSE).
+2. Kullback-Leibler (KL) Divergence Loss: Encourages the latent distribution to be close to a standard Gaussian distribution, acting as a regularization term.
+
+The model is trained using stochastic gradient descent to minimize the combined loss function.
+
+## Testing Phase
+During the testing phase, the encoder is not used to prevent data leakage. Instead, the latent variables are sampled from the learned distribution obtained during the training phase. The decoder then uses the sampled latent variables along with the test momenta (Y) to predict the initial atomic positions (X).
+
+The latent representation learned during the training phase is saved and used for sampling during the testing phase. This ensures that the model relies solely on the learned relationship between the final momenta and the initial atomic positions, without accessing the true initial positions.
+
+## Code Explanation
+
+The provided code implements the CINN model for reconstructing atomic positions from Coulomb explosion data. Here's a breakdown of the main components:
+
+1. `ConditionalNet`: A neural network that takes the concatenation of half of the input and the conditional vector as input and outputs a transformation to be applied to the other half of the input.
+
+2. `CouplingLayer`: A module that applies the conditional transformation using `ConditionalNet`. It splits the input into two parts, applies the transformation to one part conditioned on the other part and the conditional vector, and concatenates the results.
+
+3. `CINN`: The main CINN model that consists of a series of `CouplingLayer` modules. It performs the forward and backward pass through the coupling layers.
+
+4. `AtomicReconstructionModel`: The complete model that includes the encoder, decoder, and the CINN. It defines the forward pass and the encoding and decoding processes.
+
+5. `load_and_preprocess_data`: A function that loads the CSV file, preprocesses the data by scaling the positions and momenta, and splits the data into training and testing sets.
+
+6. `train`: A function that defines the training loop. It iterates over the training data, computes the reconstruction and KL divergence losses, and updates the model parameters using the Adam optimizer.
+
+7. `main`: The main function that loads and preprocesses the data, initializes the model, and runs the training loop. It also evaluates the model on the testing set and saves the trained model.
+
+The code uses PyTorch as the deep learning framework and utilizes various PyTorch modules and functions to define and train the CINN model.
+
+## Conclusion
+The provided code demonstrates how a Conditional Invertible Neural Network (CINN) can be used to solve the inverse problem of reconstructing atomic positions from Coulomb explosion data. By learning a bijective mapping between the data space and a latent space, conditioned on the final momenta, the CINN model is able to predict the initial atomic positions given only the final momenta during the testing phase.
+
+The CINN architecture, consisting of an encoder, decoder, and coupling layers, allows for efficient training and inference. The use of a latent representation and the separation of the training and testing phases helps prevent data leakage and ensures that the model learns the underlying relationship between the final momenta and the initial atomic positions.
+
+
+
+
+
+##############################**************************************###########################################**********************************************
+
+# Reconstructing Atomic Positions using a Conditional Invertible Neural Network (CINN)
+
+...
+
+## Code Summary
+
+The provided code implements a Conditional Invertible Neural Network (CINN) for reconstructing atomic positions from Coulomb explosion data. Here's a summary of the key components and functionality:
+
+1. `ConditionalNet`: A neural network module used within the coupling layers to learn the conditional transformation based on the input data and the condition (momenta).
+
+2. `CouplingLayer`: A module that applies the conditional transformation to one part of the input data while keeping the other part unchanged. It uses the `ConditionalNet` to compute the transformation.
+
+3. `CINN`: The main CINN model consisting of a series of `CouplingLayer` modules. It performs the forward and backward pass through the coupling layers to map between the data space and the latent space.
+
+4. `AtomicReconstructionModel`: The complete model that includes the encoder, decoder, and the CINN. The encoder maps the initial atomic positions to the latent space, while the decoder reconstructs the positions from the latent space using the CINN and the condition (momenta).
+
+5. `load_and_preprocess_data`: A function that loads the CSV file, preprocesses the data by scaling the positions and momenta, and splits the data into training and testing sets.
+
+6. `train`: A function that defines the training loop. It computes the reconstruction loss and the Kullback-Leibler (KL) divergence loss, and updates the model parameters using stochastic gradient descent.
+
+7. `main`: The main function that orchestrates the entire pipeline. It loads and preprocesses the data, initializes the model, runs the training loop, evaluates the model on the testing set, and saves the trained model.
+
+During training, the model learns to map the initial atomic positions to a latent space, conditioned on the final momenta. The encoder is used to obtain the latent representation, while the decoder reconstructs the positions from the latent space using the CINN.
+
+In the testing phase, the encoder is not used to prevent data leakage. Instead, the latent variables are sampled from the learned distribution, and the decoder uses these latent variables along with the test momenta to predict the initial atomic positions.
+
+The coupling layers in the CINN are designed to be invertible, allowing for both encoding and decoding operations. They use the `ConditionalNet` to learn the conditional transformation based on the input data and the condition (momenta).
+
+The loss function consists of the reconstruction loss (Mean Squared Error) and the KL divergence loss, which encourages the latent distribution to be close to a standard Gaussian distribution.
+
+Overall, the code provides an implementation of a CINN model for reconstructing atomic positions from Coulomb explosion data, showcasing the key components, training procedure, and evaluation process.

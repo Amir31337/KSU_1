@@ -1,0 +1,96 @@
+{
+    {
+      "test_mre": 0.2838184119964435,
+      "hyperparameters": {
+        "latent_dim": 512,
+        "epochs": 200,
+        "batch_size": 1024,
+        "learning_rate": 0.0097564082801063459,
+        "patience": 50,
+        "min_delta": 0.001,
+        "activation_name": "ReLU",
+        "position_norm_method": "MinMaxScaler",
+		"moments_node_method":"MinMaxScaler",
+        "use_l1": false,
+		"use_l2": false,
+        "num_hidden_layers": 3,
+        "hidden_layer_size": 256
+      }
+    },
+    {
+      "test_mre": 0.337895073784722,
+      "hyperparameters": {
+        "latent_dim": 256,
+        "epochs": 200,
+        "batch_size": 256,
+        "learning_rate": 0.0026468425008510338,
+        "patience": 100,
+        "min_delta": 0.01,
+        "activation_name": "Tanh",
+        "position_norm_method": "MinMaxScaler",
+        "momenta_norm_method": "StandardScaler",
+        "use_l1": true,
+        "l1_lambda": 0.2,
+        "use_l2": false,
+        "num_hidden_layers": 1,
+        "hidden_layer_size": 512
+      }
+    },
+    {
+      "test_mre": 0.320111686423972,
+      "hyperparameters": {
+        "latent_dim": 128,
+        "epochs": 100,
+        "batch_size": 128,
+        "learning_rate": 0.00018963648105805656,
+        "patience": 100,
+        "min_delta": 0.001,
+        "activation_name": "ReLU",
+        "position_norm_method": "MinMaxScaler",
+        "momenta_norm_method": "MinMaxScaler",
+        "use_l1": false,
+        "use_l2": false,
+        "num_hidden_layers": 1,
+        "hidden_layer_size": 512
+      }
+    },
+    {
+      "test_mre": 0.315728914614077,
+      "hyperparameters": {
+        "latent_dim": 256,
+        "epochs": 300,
+        "batch_size": 128,
+        "learning_rate": 2.220822537058567e-05,
+        "patience": 100,
+        "min_delta": 0.01,
+        "activation_name": "ELU",
+        "position_norm_method": "MinMaxScaler",
+        "momenta_norm_method": "StandardScaler",
+        "use_l1": false,
+        "use_l2": false,
+        "num_hidden_layers": 2,
+        "hidden_layer_size": 1024
+      }
+    },
+    {
+      "test_mre": 0.310858543113425,
+      "hyperparameters": {
+        "latent_dim": 256,
+        "epochs": 100,
+        "batch_size": 512,
+        "learning_rate": 1.013831099621457e-05,
+        "patience": 100,
+        "min_delta": 0.01,
+        "activation_name": "ELU",
+        "position_norm_method": "MinMaxScaler",
+        "momenta_norm_method": "MinMaxScaler",
+        "use_l1": true,
+        "l1_lambda": 0.0001,
+        "use_l2": true,
+        "l2_lambda": 0.0001,
+        "num_hidden_layers": 4,
+        "hidden_layer_size": 512
+      }
+    }
+  ]
+}

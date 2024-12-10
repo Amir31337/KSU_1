@@ -1,0 +1,38 @@
+MYFILES/FALL24/Physics/6th/pytorch$ CUDA_LAUNCH_BLOCKING=1 python3 pytorch-cinnV1.py
+
+
+based on the attached code, modify python script to resolve the error on order to solve this problem:
+
+the problem is Problem:"Reconstructing Atomic Positions from Coulomb Explosion Data
+Simulated behavior of atomic fragments under Coulomb explosion 
+Dataset: Initial positions and final momenta of each atom 
+Stored in CSV file with labeled columns 
+data = pd.read_csv('/home/g/ghanaatian/MYFILES/FALL24/Physics/cei_traning_orient_1.csv')
+position = data[['cx', 'cy', 'cz', 'ox', 'oy', 'oz', 'sx', 'sy', 'sz']].values
+momenta = data[['pcx', 'pcy', 'pcz', 'pox', 'poy', 'poz', 'psx', 'psy', 'psz']].values
+POSITION_DIM = 9 # Dimension of position
+MOMENTA_DIM = 9 # Dimension of momenta
+Each row represents a single simulated geometry
+CSV file structure: Initial Atomic Positions
+x, y, z coordinates for Carbon, Oxygen, and Sulfur
+Final Atomic Momenta 
+px, py, pz for each atom
+Input: Final momenta of atoms 
+
+Output: Predicted initial positions of atoms before Coulomb explosion
+
+Inverse problem: Final momentum → Initial atomic positions 
+Model must learn relationship between momentum and initial configuration 
+Reconstructed positions provide insights into pre-explosion geometry
+the model should only use the positions value in training phase and not use any of position's in the test as the model is trying to predict position. so instead of using the value of positions in the test phase it should use the saved representation for predicting position in addition to momenta as a condition!
+Latent Representation Saving for training's position
+•After training, latent parameters are saved
+•Saved parameters will be used for sampling during testing phase
+Testing Phase
+• Encoder is not used during testing (safeguard against data leakage)
+• Latent variables are sampled from the learned distribution in the training
+phase
+• Decoder uses sampled latent variables along with test momenta (Y) to
+predict test positions (X)
+pay attention to provide the full script, you have to provide me at once the entire code containing my desired changes!!
+

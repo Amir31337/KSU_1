@@ -1,0 +1,24 @@
+with ‘CEI-training-orient-1.csv’
+Which has 10,000 rows, we did
+two different approaches based on
+the parameters we discussed on Nov 6th.
+
+First was ‘for loop’ approach
+That its reports are available in the shared
+Excel file.
+
+The second approach was ‘Optuna’ library
+Instead of checking every single combination,
+the Optuna library simply uses
+a probabilistic model to search for possible better
+combinations. Instead of grid search,
+it uses Tree-structured Parzen Estimator (TPE).
+TPE considers the history of searches
+and learns patterns to find a possible better
+combination. Optuna uses Bayesian probability
+to focus on promising areas of hyperparameter
+space.
+
+The first approach parameters are in :app1.json & The second approach parameters are in :app1.json.
+
+Then I try to use these hypere-parameters with the new data and used colab and NRP as the needed nearly 40GB GPU. some of combinations give excactly same numbers for a large number of rows so I try to plot every one of all 9 position first with the whole 1M data and then with 150,000 test split and I provided the data distributaion and learning curve for all these hyper-parameters combination and a report of what would be the metrics for these new data. 

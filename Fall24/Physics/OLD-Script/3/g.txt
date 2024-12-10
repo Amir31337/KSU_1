@@ -1,0 +1,105 @@
+We have an inverse problem which we aim to solve by using a CINN(Conditional Invertible Neural Network) approach. Our corresponding x is initial position and the y is the final momenta of the each atom in each axes. idea of solution is to train in geometry space, conceptually to learn mapping to momentum space Our goal is to create a model to predict the position based on the momenta as an inverse problem. First we split data into 2 sets, 80% of data for training, 20% of data for testing. Using MinMaxScaler to normalize the momenta and then try to build an auto-encoder to reconstruct x and find a representation as an inference (a latent layer or a probability distribution of positions). Then use this latent representation (probability) as the input of CINN in addition to the momenta as the condition of the model. We are using the representation (z probability of the position learned in train phase) as input of CINN and then add momenta (from test set) as condition to predict the position. The main important thing to pay attention to is that the representation of position must always be learned in training phase and in testing the model should only use the probability of z from the auto-enoder which was developed in training phase not to create a new representation from position of the test set! I want the testing phase use the latent representation from the train phase NOT LEARN A NEW REPRESENTATION FROM ITS POSITION!Pay attention that I want to use the saved weight from the auto-encoder’s model in the test phase.
+
+check these two important issues in the code:
+
+1- the condition is momenta and the input is the learned representation from the auto-encoder in the training phase. pay attention to the definition of input and condition in a conditional invertible neural network.
+
+2- in the testing phase, the model should use the learned representation(z) from the training phase not to use the test's position to learn a new representation.
+
+-------------------------------
+
+You're describing a two-stage process combining an **Auto-Encoder** (AE) and a **Conditional Variational Auto-Encoder** (CVAE) to model and generate positional data, with the specific condition being **momenta**. Here's how this system can be built, step-by-step:
+
+### 1. **Auto-Encoder (AE)**
+The goal of the auto-encoder is to **compress and reconstruct the position data `x`**, learning a latent representation `z` in the process.
+
+- **Encoder**: Compresses input data (positions `x`) into a latent space representation (`z`). This can be a simple feedforward neural network that transforms the input position data to a lower-dimensional latent vector.
+  
+- **Latent Layer**: The latent layer is the compressed representation. Depending on the model design, this could be a deterministic latent vector or a **probability distribution** (as in a Variational Auto-Encoder, VAE).
+
+- **Decoder**: Reconstructs the input `x` from the latent space `z`. The auto-encoder is trained to minimize the reconstruction error (i.e., how well it can reproduce `x` from `z`).
+
+#### Objective
+- **Loss Function**: Reconstruction loss (typically MSE) to measure how well the decoder reconstructs the original position data from the latent space.
+
+---
+
+### 2. **Conditional Variational Autoencoder (CVAE)**
+In the CVAE, the aim is to **learn the mapping from latent space `z` (from the AE) to the position `x`, conditioned on the momenta `m`.**
+
+#### **Inputs and Condition**
+- **Input to CVAE**: Latent representation `z` learned from the Auto-Encoder.
+- **Condition**: The condition `m` here is **momenta**, which is additional information that helps in generating a more accurate positional output.
+
+#### **CVAE Structure**
+- **Encoder (q(z|x,m))**: Learns a probabilistic latent representation conditioned on both `x` (position) and `m` (momenta). However, in this setup, the latent space input `z` comes from the previous AE model.
+  
+- **Latent Space (`z`)**: Here, `z` represents the latent variable coming from the AE’s latent space (probability distribution or feature representation).
+  
+- **Decoder (p(x|z,m))**: Learns to generate `x` (position) from the latent representation `z` and condition `m` (momenta). The decoder takes both the learned latent variable and momenta as input, and outputs a position `x`.
+
+#### **Training CVAE**
+During the **training phase**, the CVAE learns the mapping between:
+- The latent representation `z` from the auto-encoder.
+- The momenta `m` (which acts as the conditioning variable).
+- The position `x` (which is the target variable).
+
+#### **Loss Function**
+The CVAE is typically trained using a loss that consists of two terms:
+1. **Reconstruction Loss**: Measures the difference between the generated positions and the true positions.
+2. **KL Divergence Loss**: Ensures that the latent space distribution follows a standard normal distribution, i.e., forces the latent space to follow a known distribution (important in VAE-style models).
+
+---
+
+### 3. **Training Phase**
+1. **Stage 1: Train the Auto-Encoder (AE)** to learn the latent representation `z` of the position `x`.
+   - Input: `x` (position data).
+   - Output: `z` (latent representation).
+   
+2. **Stage 2: Train the CVAE** using:
+   - Input: `z` (learned from the AE during training).
+   - Condition: `m` (momenta).
+   - Output: Reconstructed `x` (position data).
+
+The CVAE learns to map the latent representation `z` to the position `x`, conditioned on momenta `m`.
+
+---
+
+### 4. **Testing Phase**
+- During **testing**, you should use the learned latent representation `z` from the **Auto-Encoder** (obtained during the training phase).
+- The **test set** provides:
+  - **Latent representation `z`** (from AE).
+  - **Momenta `m`** (condition).
+  
+- The **trained CVAE** generates the predicted positions `x` based on:
+  - The latent representation `z`.
+  - The momenta `m` (condition).
+  
+**Important**: In the testing phase, the positions from the test set should **NOT** be used to learn a new latent representation. Instead, you use the **probability distribution** of `z` that the AE learned during the training phase.
+
+---
+
+### 5. **Key Considerations**
+- **Condition (`m`)**: Make sure to correctly encode the momenta in the model, especially during the training of the CVAE.
+  
+- **Latent Representation (`z`)**: Use the latent representation learned during the training phase and do not re-learn it during testing.
+
+- **Training/Testing Split**: The split between training and testing should be handled carefully to avoid data leakage (ensure that the testing phase does not involve re-training the latent representation `z`).
+
+---
+
+### Summary of Flow:
+
+1. **Auto-Encoder Training**:
+   - Input: `x` (positions).
+   - Output: `z` (latent representation of positions).
+
+2. **CVAE Training**:
+   - Input: `z` (from AE), `m` (momenta as the condition).
+   - Output: Predicted position `x`.
+
+3. **Testing**:
+   - Input: `z` (learned during training phase), `m` (momenta from test set).
+   - Output: Generated position `x` from CVAE.
+
+This setup ensures that the system learns a probabilistic mapping between the latent representation of positions and the conditions (momenta), allowing for accurate position generation during the testing phase.

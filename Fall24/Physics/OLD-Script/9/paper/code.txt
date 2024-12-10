@@ -1,0 +1,897 @@
+import torch
+import numpy as np
+import h5py
+from torch.utils.data import DataLoader, TensorDataset
+import torch
+import numpy as np
+
+ntrain = 10000
+
+def load_data():
+    Train_hdf5_file ='Config_2_train_obs_1pc.hdf5'
+    with h5py.File(Train_hdf5_file, 'r') as f:
+        x_train = f['input'][:ntrain]
+        y_train = f['output'][:ntrain]
+        print('x_train:',x_train.shape)
+        print('y_train:',y_train.shape)
+        train_loader = DataLoader(TensorDataset(torch.FloatTensor(x_train),torch.FloatTensor(y_train)), batch_size=16, shuffle=True, drop_last=True)
+
+
+
+    Test_hdf5_file ='Config_2_test_obs_1pc.hdf5'
+    with h5py.File(Test_hdf5_file, 'r') as f1:
+        x_test = f1['input']
+        y_test_new = f1['output']
+        print('x_test:',x_test.shape)
+        print('y_test:',y_test_new.shape)
+        test_loader = DataLoader(TensorDataset(torch.FloatTensor(x_test),torch.FloatTensor(y_test_new)),batch_size=16, shuffle=False, drop_last=True)
+        test_loader_nll = DataLoader(TensorDataset(torch.FloatTensor(x_test),torch.FloatTensor(y_test_new)),batch_size=128, shuffle=False, drop_last=True)
+
+
+    Sample_hdf5_file ='Config_2_sample_obs_1pc.hdf5'
+    with h5py.File(Sample_hdf5_file, 'r') as f2:
+        x_test = f2['input']
+        y_test_new = f2['output']
+        print('x_sample:',x_test.shape)
+        print('y_sample:',y_test_new.shape)
+        sample_loader = DataLoader(TensorDataset(torch.FloatTensor(x_test),torch.FloatTensor(y_test_new)),batch_size=1, shuffle=False, drop_last=True)
+    # To load config-1 the make the channels as 1 for the observations as (B,2,obs) 
+    # For the train data: y_train_new_config_1 = y_train[:,:2,:]
+    # For the test data: y_test_new_config_1 = y_test_new[:,:2,:] 
+    return train_loader,test_loader, sample_loader, test_loader_nll
+
+from math import exp
+import numpy as np
+import torch
+import torch.nn as nn
+
+class CouplingBlock(nn.Module):
+    '''
+    Args:
+    s_t_network: scale and shit network
+    input_dimension_1: Input dimension
+    input_dimension_2: length of the input 
+    We use soft clamp as menioned in https://arxiv.org/abs/1907.02392 (Reference)
+
+    '''
+    def __init__(self, s_t_network, input_dimension_1,input_dimension_2, condition_dimension):
+        super().__init__()
+        self.channel_part_1 = input_dimension_1 // 2
+        self.channel_part_2 = input_dimension_1 - input_dimension_1 // 2
+        self.s_net = s_t_network(self.channel_part_1 + condition_dimension, self.channel_part_1)
+        self.t_net = s_t_network(self.channel_part_2 + condition_dimension, self.channel_part_2)
+        self.input_len = input_dimension_2
+
+
+    def jacobian(self):
+        jacobian_val = self.jacobian_output
+        return jacobian_val
+
+    def forward(self, x, c, sample_the_data=False):
+        x1 = x.narrow(1, 0, self.channel_part_1)
+        x2 = x.narrow(1, self.channel_part_1, self.channel_part_2)
+
+        if sample_the_data == False:
+            x1_c = torch.cat([x1, c], 1) 
+            self.s_network = self.s_net(x1_c)
+            self.t_network = self.t_net(x1_c)
+            y2 = (torch.exp(0.636 *2* torch.atan(self.s_network))) * x2 + self.t_network
+            output = torch.cat((x1, y2), 1)
+            jacobian2 = torch.sum((0.636 *2* torch.atan(self.s_network)), tuple(range(1, self.input_len+1)))
+            self.jacobian_output = jacobian2
+            return output
+        else:
+            x1_c = torch.cat([x1, c], 1) 
+            self.s_network = self.s_net(x1_c)
+            self.t_network = self.t_net(x1_c)
+            temp = (x2 - self.t_network) / (torch.exp(0.636 *2* torch.atan(self.s_network)))
+            output = torch.cat((x1, temp), 1)
+            jacobian1 = torch.sum((0.636 *2* torch.atan(self.s_network )), dim=tuple(range(1, self.input_len+1)))
+            self.jacobian_output = (- jacobian1)
+            return output
+
+from math import exp
+import numpy as np
+import torch
+import torch.nn as nn
+
+class CouplingOneSide(nn.Module):
+    '''
+    Args:
+    s_t_network: scale and shit network
+    input_dimension_1: Input dimension
+    input_dimension_2: length of the input 
+    We use soft clamp as menioned in https://arxiv.org/abs/1907.02392 (Reference)
+
+    '''
+
+    def __init__(self, s_t_network, condition_dimension):
+        super().__init__()
+
+        self.s_net = s_t_network(condition_dimension, 1)
+        self.t_net = s_t_network(condition_dimension, 1)
+
+    def jacobian(self):
+        jacobian_val = self.jacobian_output
+        return jacobian_val
+
+    def forward(self, x, c, sample_the_data=False):
+        x1, x2 = torch.split(x, [0, 1], dim=1)
+        if sample_the_data == False:
+            x1_c = torch.cat([x1, c], 1) 
+            self.s_network = self.s_net(x1_c)
+            self.t_network = self.t_net(x1_c)
+            y2 = (torch.exp(1.1448 * torch.atan(self.s_network))) * x2 + self.t_network
+            output = torch.cat((x1, y2), 1)
+            jac = (1.1448 * torch.atan(self.s_network))
+            self.jacobian_output = torch.sum(jac, dim=tuple(range(1, 4)))
+            return output
+        else:
+            x1_c = torch.cat([x1, c], 1) 
+            self.s_network = self.s_net(x1_c)
+            self.t_network = self.t_net(x1_c)
+            temp = (x2 - self.t_network) / (torch.exp(1.1448 * torch.atan(self.s_network)))
+            output = torch.cat((x1, temp), 1)
+            jac = -(1.1448 * torch.atan(self.s_network))
+            self.jacobian_output = torch.sum(jac, dim=tuple(range(1, 4)))
+            return output
+			
+import numpy as np
+import torch
+import torch.nn as nn
+class divide_data(nn.Module):
+    '''Args:
+        X: input (BXD) to  output (BXCXHXW) 
+        (This is used to split the data  for the concat part for Z and 
+        the other part for the network during the training and sampling phase).
+    '''
+    def __init__(self, input_dimension, split_data_channel):
+        super(divide_data,self).__init__()
+        self.split_data_channel = split_data_channel
+    def forward(self, x, sample_the_data=False):
+        out = torch.split(x, self.split_data_channel,1)
+        return out
+		
+from math import exp
+import numpy as np
+import torch
+import torch.nn as nn
+#remove[0]
+class Downsample(nn.Module):
+    '''
+    Args: 
+    Input: BXCXHXW
+    Reference: Jacobsen et al.,"i-revnet: Deep invertible networks." for downsampling.
+    '''
+    def __init__(self):
+        super(Downsample,self).__init__()
+    def forward(self, x, sample_the_data=False):
+        if sample_the_data == True:
+
+            batch_size, channel_1, height_1, width_1 = x.size()
+            channel_2 = channel_1 / 4
+            width_2 = width_1 * 2
+            height_2 = (height_1) * 2
+            data = x.permute(0, 2, 3, 1)
+            data_mod = data.contiguous().reshape(batch_size, height_1, width_1, 4, int(channel_2))
+            val2 = []
+            for data_s in data_mod.split(2, 3):
+                val1 = data_s.contiguous()
+                val1 = val1.reshape(1,batch_size, height_1, int(width_2),int(channel_2))
+                val2.append(val1)
+            data1= torch.cat(val2, 0)
+            data1 = data1.transpose(0, 1)
+            data = data1.permute(0, 2, 1, 3, 4).contiguous()
+            data = data.reshape(batch_size, int(height_2), int(width_2), int(channel_2))
+            data = data.permute(0, 3, 1, 2)
+            return data
+        else:
+            batch_size, channel_2, height_2, width_2 = x.size()
+            height_1 = height_2 / 2
+            width_1 = width_2 /2
+            channel_1 = channel_2 * 4
+            data = x.permute(0, 2, 3, 1)
+            val2 = []
+            for data_s in data.split(2, 2):
+                val1 = data_s.contiguous()
+                val1 = val1.reshape(int(batch_size), int(height_1), int(channel_1))
+                val2.append(val1)
+            data2 = torch.cat(val2, 1)
+            data32 = data2.reshape(int(batch_size), int(height_1), int(width_1), int(channel_1))
+            data = data32.permute(0, 2, 1, 3)
+            data = data.permute(0, 3, 1, 2)
+            return data
+
+
+# if __name__ == "__main__":
+#     A = Downsample()
+#     x = torch.Tensor(20,2,32,32)
+#     B = A(x,sample_the_data = False)
+#     print(B.shape)
+
+
+import numpy as np
+import torch
+import torch.nn as nn
+class Permute_data(nn.Module):
+    '''
+    Args: 
+    x: input (BXCXHXW)
+    To permute the data channel-wise. This operation called during both the training and testing.
+    '''
+    def __init__(self, input_data, seed):
+        super(Permute_data,self).__init__()
+        #fixed seed
+        np.random.seed(seed)
+        self.Permute_data = np.random.permutation(input_data)
+        np.random.seed()
+        Permute_sample = np.zeros((self.Permute_data.shape))
+        for i, j in enumerate(self.Permute_data):
+            Permute_sample[j] = i
+        self.Permute_sample = Permute_sample
+    def forward(self, x, sample_the_data=False):
+        if sample_the_data == False:
+            y = x[:, self.Permute_data]
+            return y
+        else:
+            y1 = x[:, self.Permute_sample]
+            return y1
+			
+import numpy as np
+import torch
+import torch.nn as nn
+class Unflat_data(nn.Module):
+    '''Args:
+        X: input (BXD) to  output (BXCXHXW) 
+        This is used to unflatten the data from 2D to 4D for the concat part during the sampling phase
+    '''
+    def __init__(self, input_dimension):
+        super().__init__()
+        self.shape_dim = input_dimension[0]
+
+    def forward(self, x, sample_the_data=False):
+        y = x.view(x.shape[0], *self.shape_dim)
+        return y
+		
+import torch
+import torch.nn as nn
+
+class conditioning_network(nn.Module):
+    '''conditioning network
+        The input to the conditioning network are the observations (y)
+        Args: 
+        y: Observations (B X Obs)
+    '''
+    def __init__(self):
+        super().__init__()
+
+        class Flatten(nn.Module):
+            def __init__(self, *args):
+                super().__init__()
+            def forward(self, x):
+                return x.view(x.shape[0], -1)
+
+        class Unflatten(nn.Module):
+            def __init__(self, *args):
+                super().__init__()
+            def forward(self, x):
+                if x[:,0,0].shape == (16,):
+                    out = x.view(16,4,8,8) # for config_1  change this to out = x.view(16,2,8,8)
+                elif x[:,0,0].shape == (1000,):
+                    out = x.view(1000,4,8,8) # for config_1  change this to out = x.view(1000,2,8,8)
+                elif x[:,0,0].shape == (1,):
+                    out = x.view(1,4,8,8) # for config_1  change this to out = x.view(1,2,8,8)
+                return out
+
+        self.multiscale = nn.ModuleList([
+                           nn.Sequential(Unflatten(),
+                                         nn.ConvTranspose2d(4,  48, 2, padding=0), # for config_1  change this to nn.ConvTranspose2d(2,  48, 2, padding=0)
+                                         nn.ReLU(inplace=True),
+                                         nn.ConvTranspose2d(48, 48, 2, padding=1,stride=2)),
+                           nn.Sequential(nn.ReLU(inplace=True),
+                                         nn.ConvTranspose2d(48,  96, 2, padding=0,stride=2),
+                                         nn.ReLU(inplace=True),
+                                         nn.ConvTranspose2d(96, 128, 3, padding=1, stride=1)),
+                           nn.Sequential(nn.ReLU(inplace=True),
+                                         nn.ConvTranspose2d(128, 128, 2, padding=0, stride=2)),
+                           nn.Sequential(nn.ReLU(inplace=True),
+                                         nn.AvgPool2d(6),
+                                         Flatten(),
+                                         nn.Linear(12800, 9600),
+                                         nn.ReLU(inplace=True),
+                                         nn.Linear(9600, 6400),
+                                         nn.ReLU(inplace=True),
+                                         nn.Linear(6400, 4800),
+                                         nn.ReLU(inplace=True),
+                                         nn.Linear(4800, 2048),
+                                         nn.ReLU(inplace=True),
+                                         nn.Linear(2048, 1024),                                         
+                                         nn.ReLU(inplace=True),
+                                         nn.Linear(1024, 512))])
+                                         
+
+    def forward(self, cond):
+        val_cond = [cond]
+        for val in self.multiscale:
+            val_cond.append(val(val_cond[-1]))
+        return val_cond[1:]
+		
+		
+import numpy as np
+import torch
+import torch.nn as nn
+class Flat_data(nn.Module):
+    '''Args:
+        X: input (BXCXHXW) 
+        y: output (BXD)
+        (This is used to flatten the data from 4D to 2D for the concat part of the fully connected layer).
+    '''
+    def __init__(self):
+        super().__init__()
+    def forward(self, x):
+        y = x.view(x.shape[0], -1)
+        return y
+    
+	
+import numpy as np 
+import torch
+import sys
+import torch.nn as nn
+from models.CouplingBlock import CouplingBlock
+from models.CouplingOneSide import CouplingOneSide
+from models.Divide_data_model import divide_data
+from models.Downsample_model import Downsample
+from models.Permute_data_model import Permute_data
+from models.Unflat_data_model import Unflat_data
+from models.flat_data_model import Flat_data
+
+class main_file(nn.Module):
+    '''
+    Args:
+    s_net_t_net: scale and shift network
+    input_dimension: input dimension
+    for corresponding multiscale blocks.
+    x: Input (BXCXHXW)
+    c: conditioning data
+    '''
+    def __init__(self, cond_size, s_net_t_net,
+                input_dimension1,input_dimension12,cond_size1, permute_a1,value_dim,input_dimension1_r,
+                input_dimension2,input_dimension22,cond_size2,permute_a2,s_net_t_net2,input_dimension2_r,
+                input_dimension3,input_dimension32,cond_size3,s_net_t_net3,permute_a3):
+        super(main_file,self).__init__()       
+        self.single_side1 = CouplingOneSide(s_net_t_net, cond_size)
+        self.single_side2 = CouplingOneSide(s_net_t_net, cond_size)
+        self.single_side3 = CouplingOneSide(s_net_t_net, cond_size)
+        self.single_side4 = CouplingOneSide(s_net_t_net, cond_size)
+        self.single_side5 = CouplingOneSide(s_net_t_net, cond_size)
+        self.single_side6 = CouplingOneSide(s_net_t_net, cond_size)
+
+        self.downsample = Downsample()
+
+        self.coupling1 = CouplingBlock(s_net_t_net, input_dimension1,input_dimension12,cond_size1)
+        self.coupling2 = CouplingBlock(s_net_t_net, input_dimension1,input_dimension12,cond_size1)
+        self.coupling3 = CouplingBlock(s_net_t_net, input_dimension1,input_dimension12,cond_size1)
+        self.coupling4 = CouplingBlock(s_net_t_net, input_dimension1,input_dimension12,cond_size1)
+        self.coupling5 = CouplingBlock(s_net_t_net, input_dimension1,input_dimension12,cond_size1)
+
+
+        self.permute = Permute_data(permute_a1,0)
+        self.permute_c1 = Permute_data(permute_a1,1)
+        self.permute_c2 = Permute_data(permute_a1,2)
+        self.permute_c3 = Permute_data(permute_a1,3)
+        self.permute_c4 = Permute_data(permute_a1,4)
+    
+
+        self.unflat1 = Unflat_data(input_dimension1_r)
+
+        self.split = divide_data(input_dimension1,value_dim)
+
+  
+        self.coupling21 = CouplingBlock(s_net_t_net2, input_dimension2,input_dimension22,cond_size2)
+        self.coupling22 = CouplingBlock(s_net_t_net2, input_dimension2,input_dimension22,cond_size2)
+        self.coupling23 = CouplingBlock(s_net_t_net2, input_dimension2,input_dimension22,cond_size2)
+        self.coupling24 = CouplingBlock(s_net_t_net2, input_dimension2,input_dimension22,cond_size2)
+
+
+        self.permute2 = Permute_data(permute_a2,0)
+        self.permute2_c1 = Permute_data(permute_a2,1)
+        self.permute2_c2 = Permute_data(permute_a2,2)
+        self.permute2_c3 = Permute_data(permute_a2,3)
+
+
+        self.split2 = divide_data(input_dimension2,[4,4])
+
+        self.flat2 = Flat_data()
+
+
+        self.unflat2 = Unflat_data(input_dimension2_r)
+
+        self.coupling31 = CouplingBlock(s_net_t_net3, input_dimension3,input_dimension32,cond_size3)
+
+
+        self.permute3 = Permute_data(permute_a3,0)
+
+
+    def forward(self, x, c1,c2,c3,c4,sample_the_data=False,forward=False,jac=False):
+        if forward==True:
+            #1-1
+            out1= self.single_side1(x,c1)
+            jac0 = self.single_side1.jacobian()
+            #1-2
+            out2 = self.single_side2(out1,c1)
+            jac0_1 = self.single_side2.jacobian()
+            #1-3
+            out3= self.single_side3(out2,c1)
+            jac0_2 = self.single_side3.jacobian()
+            #1-4
+            out4 = self.single_side4(out3,c1)
+            jac0_3 = self.single_side4.jacobian()
+            #1-5
+            out5 = self.single_side5(out4,c1)
+            jac0_4 = self.single_side5.jacobian()
+            #1-6
+            out6 = self.single_side6(out5,c1)
+            jac0_5 = self.single_side6.jacobian()
+            #downsample
+            out7 = self.downsample(out6)
+            jac_glow1 =out7
+
+            #2
+            out12 = self.coupling1(out7,c2)
+            jac1 = self.coupling1.jacobian()
+            out13 = self.permute(out12)
+
+            out14 = self.coupling2(out13,c2)
+            jac1_c1 = self.coupling2.jacobian()
+            out15 = self.permute_c1(out14)
+
+            out16 = self.coupling3(out15,c2)
+            jac1_c2 = self.coupling3.jacobian()
+            out17 = self.permute_c2(out16)
+
+            out18 = self.coupling4(out17,c2)
+            jac1_c3 = self.coupling4.jacobian()
+            out19 = self.permute_c3(out18)
+
+            out20 = self.coupling5(out19,c2)
+            jac1_c4 = self.coupling5.jacobian()
+            out21 = self.permute_c4(out20)
+
+
+            out22 = self.split(out21)
+            out1s = out22[0] 
+            out2s = out22[1] 
+
+
+            flat_output1 = self.flat2(out2s)
+
+
+            out31 = self.downsample(out1s)
+            jac_glow2 = out31
+
+            #3
+            out32 = self.coupling21(out31,c3)
+            jac2 = self.coupling21.jacobian()
+            out33 = self.permute2(out32)
+
+            out34 = self.coupling22(out33,c3)
+            jac2_c1 = self.coupling22.jacobian()
+            out35 = self.permute2_c1(out34)
+
+            out36 = self.coupling23(out35,c3)
+            jac2_c2 = self.coupling23.jacobian()
+            out37= self.permute2_c2(out36)
+
+            out38 = self.coupling24(out37,c3)
+            jac2_c3 = self.coupling24.jacobian()
+            out39 = self.permute2_c3(out38)
+
+            out40 = self.split2(out39)
+            out1s4 = out40[0] 
+            out2s4 = out40[1] 
+            flat_output2 = self.flat2(out2s4)        
+            flat_ds2 = self.flat2(out1s4)  
+            jac_glow3 =  flat_ds2
+
+            #4
+            out1f = self.coupling31(flat_ds2,c4)
+            jac3 = self.coupling31.jacobian()
+
+            out_all = self.permute3(out1f)
+           
+            final_out  = torch.cat((flat_output1,flat_output2,out_all),dim=1)
+
+            #jacobian
+            jac = jac0+jac1+jac2+jac3+jac0_1+jac0_2+jac0_3+jac0_4+jac0_5+jac1_c1+jac1_c2+jac1_c3+jac1_c4+jac2_c1+jac2_c2+jac2_c3
+            return final_out, jac
+        else:
+
+            #unflat the 2X32X32 data
+            out1 = x[:,:2048]
+            out1_unflat = self.unflat1(out1)
+            #unflat the 4X16X16 data            
+            out2 = x[:,2048:3072]
+            out2_unflat = self.unflat2(out2)
+            # this is considered as the  input to the INN model 1024 
+            out3 = x[:,3072:]
+            #permute the data
+            out3p = self.permute3(out3,sample_the_data=True)
+            # consider the INN model FC
+            out = self.coupling31(out3p,c4,sample_the_data=True)
+            out3_unflat = self.unflat2(out)
+            #combine the data
+            combine_out2_out3 = torch.cat((out3_unflat,out2_unflat), dim=1)
+            #=========================================
+            #permute the data
+            out_4 =  self.permute2_c3(combine_out2_out3,sample_the_data=True)
+
+            
+            out_5 = self.coupling24(out_4,c3,sample_the_data=True)    
+            #==============================================    
+            #=========================================
+            #permute the data
+            out_4 =  self.permute2_c2(out_5,sample_the_data=True)
+
+            
+            out_5 = self.coupling23(out_4,c3,sample_the_data=True)   
+            #==============================================   
+            #=========================================
+            #permute the data
+            out_4 =  self.permute2_c1(out_5,sample_the_data=True)
+
+            
+            out_5 = self.coupling22(out_4,c3,sample_the_data=True)   
+            #==============================================  Here 
+            #=========================================
+            #permute the data
+            out_4 =  self.permute2(out_5,sample_the_data=True)
+
+            
+            out_5 = self.coupling21(out_4,c3,sample_the_data=True)   
+            #==============================================  Here 
+
+            #updample to 2X32X32
+            out_6 = self.downsample(out_5,sample_the_data=True)
+            #combine the data with out_1 4X32X32
+            combine_out6_out1 = torch.cat((out_6,out1_unflat), dim=1)
+            #=============================
+            #permute
+            out_7 =  self.permute_c4(combine_out6_out1,sample_the_data=True)
+            
+            out_8 = self.coupling5(out_7,c2,sample_the_data=True) 
+            #==================================
+            #=============================
+            #permute
+            out_7 =  self.permute_c3(out_8,sample_the_data=True)
+ 
+            out_8 = self.coupling4(out_7,c2,sample_the_data=True) 
+            #==================================
+            #=============================
+            #permute
+            out_7 =  self.permute_c2(out_8,sample_the_data=True)
+    
+            out_8 = self.coupling3(out_7,c2,sample_the_data=True) 
+ 
+            #==================================
+            #=============================
+            #permute
+            out_7 =  self.permute_c1(out_8,sample_the_data=True)
+            
+            out_8 = self.coupling2(out_7,c2,sample_the_data=True)  
+            #==================================
+            #=============================
+            #permute
+            out_7 =  self.permute(out_8,sample_the_data=True)
+            
+            out_8 = self.coupling1(out_7,c2,sample_the_data=True)  
+            #==================================
+            #upsample 1X64X64
+            out_9 = self.downsample(out_8,sample_the_data=True)
+            out_10 = self.single_side6(out_9,c1,sample_the_data=True)
+            out_10 = self.single_side5(out_10,c1,sample_the_data=True)
+            out_10 = self.single_side4(out_10,c1,sample_the_data=True)
+            out_10 = self.single_side3(out_10,c1,sample_the_data=True)
+            out_10 = self.single_side2(out_10,c1,sample_the_data=True)
+            out_10 = self.single_side1(out_10,c1,sample_the_data=True)
+
+            return out_10
+			
+
+import argparse
+import torch
+import json
+import random
+from pprint import pprint
+
+# always uses cuda if avaliable
+
+class Parser(argparse.ArgumentParser):
+    def __init__(self):
+        super(Parser, self).__init__(description='Solving inverse problem using cINN')
+        #Block-1
+        self.add_argument('--split_channel', type=list, default=[2,2], help='Input dimension block-1 in C1,C2') 
+        self.add_argument('--cond_size', type=int, default=128, help='Conditioning dimension') 
+        self.add_argument('--hidden_layer_channel', type=int, default=64, help='number of channels for the hidden layer') 
+        #Block-2
+        self.add_argument('--input_dimension1_r', type=list, default=[(2,32,32)], help='Input dimension block-2 in CXHXW') 
+        self.add_argument('--cond_size1', type=int, default=128, help='Conditioning dimension') 
+        self.add_argument('--hidden_layer_channel1', type=int, default=64, help='number of channels for the hidden layer') 
+        self.add_argument('--input_dimension1', type=int, default=4, help='coupling block-2') 
+        self.add_argument('--input_dimension12', type=int, default=3, help='coupling block-2')      
+        self.add_argument('--permute_a1', type=int, default=4, help='permutation for the invertible block-2')        
+        #Block-3
+        self.add_argument('--input_dimension2_r', type=list, default=[(4,16,16)], help='Input dimension block-3 in CXHXW')
+        self.add_argument('--cond_size2', type=int, default=48, help='Conditioning dimension')
+        self.add_argument('--hidden_layer_channel2', type=int, default=96, help='number of channels for the hidden layer')
+        self.add_argument('--input_dimension2', type=int, default=8, help='invertible block-3')
+        self.add_argument('--input_dimension22', type=int, default=3, help='dinvertible block-3')        
+        self.add_argument('--permute_a2', type=int, default=8, help='permutation for the invertible block-3')    
+        # training
+        self.add_argument('--epochs', type=int, default=102, help='number of epochs to train (default: 200)')
+        self.add_argument('--lr', type=float, default=0.0008, help='learnign rate')
+        self.add_argument('--weight_decay', type=float, default=0.00005, help="weight decay")
+        self.add_argument('--batch-size', type=int, default=16, help='input batch size for training (default: 16)')
+        self.add_argument('--test-batch-size', type=int, default=128, help='input batch size for testing (default: 100)')
+        self.add_argument('--seed', type=int, default=1, help='manual seed used in Tensor')
+        self.add_argument('--ntrain', type=int, default=10000, help="number of training data")
+        self.add_argument('--ntest', type=int, default=128, help="number of test data") 
+        #Block-4
+        self.add_argument('--cond_size3', type=int, default=512, help='Conditioning dimension')
+        self.add_argument('--hidden_layer3', type=int, default=4096, help='number of channels for the hidden layer')
+        self.add_argument('--input_dimension3', type=int, default=1024, help='invertible block-4')
+        self.add_argument('--input_dimension32', type=int, default=1, help='dinvertible block-4')        
+        self.add_argument('--permute_a3', type=int, default=1024, help='permutation for the invertible block-4')  
+
+
+    def parse(self):
+        args = self.parse_args()
+        # seed
+        if args.seed is None:
+            args.seed = random.randint(1, 10000)
+        print("Random Seed: ", args.seed)
+        random.seed(args.seed)
+        torch.manual_seed(args.seed)
+        print('Arguments:')
+        pprint(vars(args))
+        return args
+
+# global
+args = Parser().parse()
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+import torch
+import torch.nn as nn
+from time import time
+import torch.optim as optim
+import torch.nn.functional as F
+import sys
+import os
+import numpy as np
+import scipy.io as io
+import matplotlib.pyplot as plt
+from utils.load_data import load_data
+from models.main_model import main_file
+from utils.plot import error_bar,plot_std, train_test_error
+from utils.plot_samples import save_samples
+from models.conditioning_network import conditioning_network
+from args import args, device
+# load the data here
+train_loader, test_loader, sample_loader, test_loader_nll = load_data()
+print('loaded the data.........')
+
+
+
+# this is the s and the t network
+def convolution_network(Hidden_layer):
+    return lambda input_channel, output_channel: nn.Sequential(
+                                    nn.Conv2d(input_channel, Hidden_layer, 3, padding=1),
+                                    nn.ReLU(),
+                                    nn.Conv2d(Hidden_layer, output_channel, 3, padding=1))
+
+def fully_connected(Hidden_layer):
+    return lambda input_data, output_data: nn.Sequential(
+                                    nn.Linear(input_data, Hidden_layer),
+                                    nn.ReLU(),
+                                    nn.Linear(Hidden_layer, output_data))
+
+
+
+
+network_s_t = convolution_network(args.hidden_layer_channel)     
+network_s_t2 = convolution_network(args.hidden_layer_channel2)
+network_s_t3 = fully_connected(args.hidden_layer3)
+#load network
+INN_network = main_file(args.cond_size,network_s_t,
+                    args.input_dimension1,args.input_dimension12,args.cond_size1,args.permute_a1,args.split_channel,args.input_dimension1_r,
+                    args.input_dimension2,args.input_dimension22,args.cond_size2,args.permute_a2,network_s_t2,args.input_dimension2_r,
+                    args.input_dimension3,args.input_dimension32,args.cond_size3,network_s_t3,args.permute_a3).to(device)
+cond_network = conditioning_network().to(device)
+
+
+
+combine_parameters = [parameters_net for parameters_net in INN_network.parameters() if parameters_net.requires_grad]
+for parameters_net in combine_parameters:
+    parameters_net.data = 0.02 * torch.randn_like(parameters_net)
+
+
+
+combine_parameters += list(cond_network.parameters())
+optimizer = torch.optim.Adam(combine_parameters, lr=args.lr, weight_decay=args.weight_decay)
+
+def train(N_epochs):
+    INN_network.train()
+    cond_network.train()
+    loss_mean = []
+    for i, (x, y) in enumerate(train_loader):
+        x, y = x.to(device), y.to(device)
+        x = x.view(16,1,64,64)
+        y = y.view(16,4,64) # for config_1  change this to y = y.view(16,2,64)
+        tic = time()
+        y1 = cond_network(y)
+        c = y1[2]   
+        c2 = y1[1]
+        c3 = y1[0]
+        c4 = y1[3]
+        z,log_j = INN_network(x,c,c2,c3,c4,forward=True)
+        loss = torch.mean(z**2) / 2 - torch.mean(log_j) / ( 1 * 64 * 64)
+        loss.backward()      
+        loss_mean.append(loss.item())
+        optimizer.step()
+        optimizer.zero_grad()
+    loss_mean1 = loss_mean
+    return loss_mean1
+
+def test(epoch):
+    INN_network.eval()
+    cond_network.eval()
+    loss_mean = []
+    for batch_idx, (input, target) in enumerate(test_loader):
+        input, target = input.to(device), target.to(device)
+        input, target = input.view(16,1,64,64), target.view(16,4,64) # for config_1  change this to target = target.view(16,2,64)
+        x = input.view(16,1,64,64)
+        y = target.view(16,4,64) # for config_1  change this to y = target.view(16,2,64)
+        tic = time()
+        y1 = cond_network(y)
+        c = y1[2]   
+        c2 = y1[1]
+        c3 = y1[0]
+        c4 = y1[3]
+        z,log_j = INN_network(x,c,c2,c3,c4,forward=True)
+        loss_val = torch.mean(z**2) / 2 - torch.mean(log_j) /( 1 * 64 * 64)
+        loss_mean.append(loss_val.item())
+    loss_mean1 = loss_mean
+    return loss_mean1
+
+def sample2(epoch):
+    INN_network.eval()
+    cond_network.eval()
+    loss_mean = []
+    for batch_idx, (input, target) in enumerate(sample_loader):
+        input, target = input.to(device), target.to(device)
+        input, target = input.view(1,1,64,64), target.view(1,4,64)# for config_1  change this to target = target.view(16,2,64)
+        x = input.view(1,1,64,64)
+        y = target.view(1,4,64) # for config_1  change this to y = target.view(16,2,64)
+        labels_test = target    
+        N_samples = 1000
+
+        print(type(labels_test))
+        labels_test = labels_test[0,:,:]
+        labels_test = labels_test.cpu().data.numpy()
+        l = np.repeat(np.array(labels_test)[np.newaxis,:,:], N_samples, axis=0)
+        l = torch.Tensor(l).to(device)            
+        z = torch.randn(N_samples,4096).to(device)
+        with torch.no_grad():
+            y1 = cond_network(l)
+            input = x.view(1,4096)
+            c = y1[2]   
+            c2 = y1[1]
+            c3 = y1[0]
+            c4 = y1[3]
+            val = INN_network(z,c,c2,c3,c4,forward=False)
+        rev_x = val.cpu().data.numpy()
+        if epoch % 10 == 0:
+            input_test = input[0,:].cpu().data.numpy()
+            input1 = input_test.reshape(1,1,64,64)
+            samples1 = rev_x
+            samples12 = samples1
+            mean_samples1 = np.mean(samples1,axis=0)
+            mean_samples1 = mean_samples1.reshape(1,1,64,64)
+            samples1 = samples1[:2,:,:,:]
+            x1 = np.concatenate((input1,mean_samples1,samples1),axis=0)
+            save_dir = '.'
+            save_samples(save_dir, x1, epoch, 2, 'sample', nrow=2, heatmap=True, cmap='jet')
+            std_sample = np.std(samples12,axis=0)
+            std_sample = std_sample.reshape(64,64)
+
+            actual = input1
+            pred = rev_x
+            error_bar(actual,pred,epoch)
+            io.savemat('./results/samples_%d.mat'%epoch, dict([('rev_x_%d'%epoch,np.array(rev_x))]))
+            io.savemat('./results/input_%d.mat'%epoch, dict([('pos_test_%d'%epoch,np.array(input_test))]))
+        if epoch == (args.epochs-1):
+            std_sample = np.std(rev_x,axis=0)
+            std_sample = std_sample.reshape(64,64)
+            plot_std(std_sample,epoch)
+
+domain = 4096
+def test_NLL(epoch):
+    INN_network.eval()
+    cond_network.eval()
+    final_concat = []
+    for batch_idx, (input, target) in enumerate(test_loader_nll):
+        input, target = input.to(device), target.to(device) 
+        input12, target = input.view(128,1,64,64), target.view(128,4,64)   # for config_1  change this to target = target.view(128,2,64)
+        N_samples = 1000
+        labels_test1 = target
+
+        for jj in range(128):
+            labels_test = labels_test1[jj,:,:]
+            x = input12[jj,:,:,:]
+            labels_test = labels_test.cpu().data.numpy()
+            l = np.repeat(np.array(labels_test)[np.newaxis,:,:], N_samples, axis=0)
+            l = torch.Tensor(l).to(device)            
+            z = torch.randn(N_samples,4096).to(device)
+            with torch.no_grad():
+                y1 = cond_network(l)
+                input = x.view(1,4096)
+                c = y1[2]   
+                c2 = y1[1]
+                c3 = y1[0]
+                c4 = y1[3]
+                val = INN_network(z,c,c2,c3,c4,forward=False)
+            rev_x = val.cpu().data.numpy()
+            input1 = x.cpu().data.numpy()
+            input1 = input1.reshape(1,1,64,64)
+            rev_x = rev_x.reshape(1000,1,64,64)
+
+            mean_val = rev_x.mean(axis=0)
+            mean_val = mean_val.reshape(1,1,64,64)
+            d1 = (1/domain)*np.sum(input1**2)
+            n1 = (1/domain)*np.sum((input1-mean_val)**2)
+            m1 = n1/d1
+            final_concat.append(m1)
+        final_concat = np.array(final_concat)
+    return final_concat
+
+#==========================================================
+def mkdir(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+#==========================================================
+
+
+print('training start .............')
+mkdir('results')
+N_epochs = 102
+loss_train_all = []
+loss_test_all = []
+tic = time()
+for epoch in range(args.epochs):
+    print('epoch number .......',epoch)
+    loss_train = train(epoch)
+    loss_train2 = np.mean(loss_train)
+    loss_train_all.append(loss_train2)
+    with torch.no_grad():
+        sample2(epoch)
+        loss_test = test(epoch)
+        loss_test = np.mean(loss_test)
+        print(('mean NLL :',loss_test))
+        loss_test_all.append(loss_test)
+    if epoch == (N_epochs-1):
+        final_error = test_NLL(epoch)
+        old_val = np.mean(final_error)
+        print('print error mean NLL:',np.mean(final_error))
+
+epoch1 = 200
+torch.save(INN_network.state_dict(), f'INN_network_epoch{epoch1}.pt')
+torch.save(cond_network.state_dict(), f'cond_network_epoch{epoch1}.pt')
+loss_train_all = np.array(loss_train_all)
+loss_test_all = np.array(loss_test_all)
+print('saving the training error and testing error')
+io.savemat('test_loss.mat', dict([('testing_loss',np.array(loss_test_all))]))
+print('plotting the training error and testing error')
+train_test_error(loss_train_all,loss_test_all, epoch1)
+toc = time()
+print('total traning taken:', toc-tic)
+

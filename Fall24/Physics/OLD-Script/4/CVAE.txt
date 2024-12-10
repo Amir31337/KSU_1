@@ -1,0 +1,27 @@
+1. Data Preparation
+   - The data is shuffled, split into training (80%) and testing (20%) sets using train_test_split.
+   - The positions (X) and momenta (Y) are normalized using StandardScaler, matching the step to prepare data for training.
+
+2. Model Initialization
+   - The CVAE model is defined with an encoder and decoder.
+   - The encoder processes the positions (X) to produce latent variables (Z) via mu and logvar.
+   - The decoder reconstructs positions (X) from latent variable Z and conditions on momenta (Y).
+
+3. Training Phase
+   - The training loop correctly trains the model using both the reconstruction loss and KL divergence, as required for CVAEs.
+   - The encoder processes positions (X) to produce the latent distribution parameters (mu, logvar), and Z is sampled using the reparameterization trick.
+   - The decoder reconstructs positions using the latent Z and momenta (Y), optimizing the loss function.
+
+4. Latent Representation Saving
+   - After training, the latent parameters (mu, logvar) are saved, which will later be used for sampling during testing.
+
+5. Testing Phase
+   - The encoder is not used during testing (safeguard against data leakage).
+   - The latent variables are sampled from the learned distribution in the training phase, and the decoder uses these latent variables along with test momenta (Y) to predict the test positions (X).
+
+6. Evaluation
+   - The code computes evaluation metrics (MSE, MAE) by comparing the predicted positions with the actual test positions.
+   - The results are saved and visualized as specified.
+
+Safeguards Against Data Leakage
+   - The code correctly avoids using the encoder on the test data. The latent space (Z) is only sampled from the learned distribution in the training phase, ensuring no test positions (X) are used to influence the prediction.

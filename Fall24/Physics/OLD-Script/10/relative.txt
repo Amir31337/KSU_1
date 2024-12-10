@@ -1,0 +1,4 @@
+I want to add a relative error to this code:
+relative error: abs(predicted position - real position)/abs(real position)
+
+for each position, there are 9 different values I want to calculate the relative error for all 9 values in position vector then calculate the average for all positions in test split

@@ -1,0 +1,160 @@
+
+ Atomic Position Reconstruction using CVAE(Conditional Variational AutoEncoder)
+
+ 1. Problem Definition
+ Type: Inverse Problem
+ Goal: Reconstruct initial atomic positions from final momenta after Coulomb explosion
+ Physics Context: Modeling molecular geometry before Coulomb explosion
+
+ 2. Data Structure
+ Input Features (Y  Condition)
+ Final Momenta (9 dimensions)
+   Carbon atom (pcx, pcy, pcz)
+   Oxygen atom (pox, poy, poz)
+   Sulfur atom (psx, psy, psz)
+
+ Target Variables (X)
+ Initial Positions (9 dimensions)
+   Carbon atom (cx, cy, cz)
+   Oxygen atom (ox, oy, oz)
+   Sulfur atom (sx, sy, sz)
+   
+Basically the samples from saved learned latent representation of position in training phase in Input and the Momenta is each step is the condition! Pay attention that The model must be conditioned on momenta.
+
+ 3. Data Management
+ Split Ratios
+ Training: 70%
+ Validation: 15%
+ Testing: 15%
+
+ 4. Model Architecture Requirements
+ Latent Space
+ Dimension: To be defined at script beginning
+ Distribution: Normal distribution (or other??)
+ Parameters to track:
+   Mean (μ_train)
+   Standard deviation (σ_train)
+
+ 5. Training Protocol
+ Phase 1: Training
+1. Train using only training dataset
+2. Track per epoch:
+    Training loss
+    Validation loss
+3. Save:
+    Loss curves
+    Latent representations (z_train)
+    Distribution parameters (μ_train, σ_train)
+
+ Phase 2: Validation
+1. Never encode validation positions
+2. Process:
+    Sample z from saved training distribution
+    Use sampled z with validation momenta
+    Reconstruct positions
+
+ Phase 3: Testing
+1. Never encode test positions
+2. Use same process as validation
+3. Evaluate using:
+    Mean Squared Error (MSE)
+    Mean Relative Error (MRE)
+
+ 6. Error Metrics
+ Mean Relative Error Calculation
+ Formula: MRE = (1/n)  Σ(|x_i  x̂_i| / |x_i|)
+ Calculate for all 9 position values
+ Average across test split
+
+ 7. Critical Constraints
+1. Never encode validation/test positions
+2. Always sample from training distribution
+3. Keep validation and test sets strictly separate
+4. Plot losses only during training/validation
+5. Calculate final metrics only after training completion
+
+ 8. Required Outputs
+ Training Phase
+ Loss curves (training and validation)
+ Saved latent distribution parameters
+
+
+ Testing Phase
+ MSE scores
+ MRE scores for each position component
+ Average MRE across all positions
+ 
+ 
+ my data is defined as below:
+     data = pd.read_csv('/home/g/ghanaatian/MYFILES/FALL24/Physics/cei_traning_orient_1.csv')
+     position = data[['cx', 'cy', 'cz', 'ox', 'oy', 'oz', 'sx', 'sy', 'sz']].values
+     momenta = data[['pcx', 'pcy', 'pcz', 'pox', 'poy', 'poz', 'psx', 'psy', 'psz']].values
+	 
+	 
+	
+______________________________________________
+
+
+use optuna library to find the best set of hyper-parameters for this code. my goal is to fine-tune based on Average Relative Error on Test Set and get the lowest possible Average Relative Error on Test Set with optimizing these parameters:
+BATCH_SIZE
+N_EPOCHS
+HIDDEN_DIM
+LATENT_DIM
+lr
+    ACTIVATION functions
+    Normalization methods for position and momenta (either the same or different methods), also try different normalization methods for position and momenta (samme or different) provide a full script of searching a wide range of values to get the lowest possible errors and print the best combination of hyper parameters in addition to relative error and MSE it has.
+ comprehensive Python script that integrates Optuna for hyperparameter optimization of your Conditional Variational Autoencoder (CVAE) model. The goal is to minimize the Average Relative Error on the test set by fine-tuning the following hyperparameters:
+
+BATCH_SIZE
+N_EPOCHS
+HIDDEN_DIM
+LATENT_DIM
+lr
+    ACTIVATION functions
+    Normalization methods for position and momenta (either the same or different methods), also try different normalization methods for position and momenta (samme or different)
+    
+Make sure that these holds in the script:
+
+# Data Split
+1. Dataset Division:
+   - Training: 70%
+   - Validation: 15%
+   - Testing: 15%
+
+# Training Phase
+1. Train the model on training data
+2. Monitor and plot per epoch:
+   - Training loss
+   - Validation loss
+   - Save loss curves for analysis
+3. Compute and save:
+   - Mean (μ_train) of latent variables
+   - Standard deviation (σ_train) of latent variables
+   - Learned latent representations (z_train)
+
+# Validation & Testing Phase
+1. DO NOT encode validation/test positions (x_val, x_test)
+2. Instead:
+   - Sample z from saved training distribution using (μ_train, σ_train)
+   - Use sampled z and validation/test momenta (y_val, y_test) as condition to reconstruct positions
+
+
+2. After Training done, for Testing:
+   - Calculate MSE (Mean Squared Error)
+   - Calculate MRE (Mean Relative Error):
+     ```
+     MRE = (1/n) * Σ(|x_i - x̂_i| / |x_i|)
+     ```
+     where:
+     - x_i is the true value
+     - x̂_i is the predicted value
+     - n is the number of samples
+
+# Key Points
+- Plot losses during training/validation only
+- Calculate MSE and MRE only after training finishes
+- Never encode validation or test positions
+- Always sample from training distribution
+- Use saved latent representation from training
+- Condition reconstruction on momenta
+- Keep validation and test sets separate

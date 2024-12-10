@@ -1,0 +1,61 @@
+Data Preparation:
+
+Load your dataset containing the initial atomic positions (x) and the corresponding final momenta (y) after the Coulomb explosion.
+Preprocess the data by normalizing or scaling if necessary.
+Split the dataset into training and validation sets.
+
+
+Define the cINN Model Architecture:
+
+Create an invertible neural network using affine coupling layers.
+The input to the network will be the initial atomic positions (x), which consist of the coordinates of the three atoms (C, O, S) in three axes (x, y, z), resulting in a 9-dimensional input.
+The output of the network will be the latent representation (z), which captures the information loss in the forward process.
+Condition the affine coupling layers on the final momenta (y), which also consist of 9 components (momenta of C, O, S in x, y, z directions). This is done by providing y as an additional input to each affine coupling layer.
+
+
+Training the cINN Model:
+
+Define the maximum likelihood loss function as per Equation 7 in the paper:
+L(z) = -1/2 * (||z||^2 + log|det(J_{x->z})|)
+Initialize the model parameters.
+Train the cINN model using stochastic gradient descent to minimize the loss function.
+During training, the network learns to transform the initial atomic positions (x) into the latent representation (z), conditioned on the final momenta (y).
+Monitor the training loss and validation performance to avoid overfitting.
+
+
+Inference (Solving the Inverse Problem):
+
+Given a set of final momenta (y) for which you want to predict the initial atomic positions, perform the following steps:
+
+Sample latent variables (z) from a standard Gaussian distribution.
+Pass the sampled z and the given y through the inverse mapping of the trained cINN model to obtain the predicted initial atomic positions (x).
+The inverse mapping is performed by reversing the affine coupling layers and providing y as the conditioning variable.
+
+
+Repeat the sampling process multiple times to generate a distribution of plausible initial atomic positions for each given set of final momenta.
+
+
+Post-processing and Evaluation:
+
+Apply any necessary post-processing steps to the predicted initial atomic positions, such as denormalizing or rescaling.
+Evaluate the quality of the predictions by comparing them with the true initial positions from the validation set or using domain-specific metrics.
+Analyze the distribution of predicted initial positions to gain insights into the uncertainty and variability of the predictions.
+
+
+Refinement and Iteration:
+
+If the predictions are not satisfactory, consider the following refinements:
+
+Adjust the architecture of the cINN model, such as the number of affine coupling layers or the size of the hidden layers.
+Experiment with different conditioning strategies or normalization techniques.
+Incorporate additional physical constraints or domain knowledge into the model or the loss function.
+
+
+Iterate on the model training and inference process until satisfactory results are obtained.
+
+
+Application and Interpretation:
+
+Use the trained cINN model to predict initial atomic positions for new sets of final momenta.
+Interpret the predicted positions in the context of your Coulomb explosion problem and draw insights about the underlying physical processes.
+Validate the predictions against experimental data or theoretical expectations, if available.

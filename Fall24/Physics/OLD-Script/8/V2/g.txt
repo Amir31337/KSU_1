@@ -1,0 +1,15 @@
+my problem is an inverse problem. my X is inintial atomic position(3 atoms c,o,s in 3 axes x,y,z) and my Y is final momenta for each 9 vector after a columbus explosion.
+now I wnat to solve this inverse problem to predict inintial position based on final momenta using this papers CINN model.
+my data is defined as below:
+    data = pd.read_csv('/home/g/ghanaatian/MYFILES/FALL24/Physics/cei_traning_orient_1.csv')
+    position = data[['cx', 'cy', 'cz', 'ox', 'oy', 'oz', 'sx', 'sy', 'sz']].values
+    momenta = data[['pcx', 'pcy', 'pcz', 'pox', 'poy', 'poz', 'psx', 'psy', 'psz']].values
+
+implement below CINN explanation, use a latent representation of X(position) as input and condition of Y(momenta):
+
+
+
+
+
+
+make all of the hyperparameters of this code define at the very beggining of the script including every variables or activation function the goal is to easily change the hyper parameters and they would be accessible within the beggining of the script

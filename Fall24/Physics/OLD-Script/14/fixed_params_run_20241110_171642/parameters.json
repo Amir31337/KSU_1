@@ -1,0 +1,17 @@
+{
+    "LATENT_DIM": 1024,
+    "EPOCHS": 200,
+    "BATCH_SIZE": 256,
+    "LEARNING_RATE": 0.0001,
+    "PATIENCE": 100,
+    "MIN_DELTA": 1e-05,
+    "activation_name": "Sigmoid",
+    "position_norm_method": "StandardScaler",
+    "momenta_norm_method": "None",
+    "use_l1": false,
+    "L1_LAMBDA": 0.5,
+    "use_l2": true,
+    "L2_LAMBDA": 0.01,
+    "num_hidden_layers": 3,
+    "hidden_layer_size": 256
+}

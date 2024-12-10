@@ -1,0 +1,8 @@
+[
+    {
+        "seed": 42,
+        "split": 1,
+        "train_ratio": 0.7,
+        "val_ratio": 0.15,
+        "test_ratio": 0.15,
+        "mre": 
