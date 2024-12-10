@@ -1,0 +1,114 @@
+
+Conditional Variational Autoencoders (CVAEs) are an extension of Variational Autoencoders (VAEs) designed for controlled data generation, which can be effectively applied to structured tabular datasets in CSV format. Below is a concise yet complete explanation of CVAEs based on the most relevant findings:
+
+Concept and Mechanism
+---------------------
+Variational Autoencoder Foundation:
+CVAEs are built on the VAE architecture, which learns latent representations of data by encoding input into a probabilistic latent space. This enables generating similar yet diverse data by sampling from this space.
+
+Conditional Extension:
+Unlike VAEs, CVAEs include a conditional input (e.g., a specific class or feature of the dataset) to guide the data generation process. This additional input allows CVAEs to generate data conditioned on specific attributes, making them ideal for scenarios like synthetic data augmentation and anomaly detection in tabular datasets.
+
+Algorithm Workflow
+-------------------
+1. Input Processing:
+   - Data is preprocessed and encoded into a conditional latent representation. The CSV files are typically transformed into a format suitable for neural network inputs (e.g., normalized tensors).
+2. Learning Conditional Distributions:
+   - The encoder learns a conditional posterior q(z|x, y), where x represents the input features and y is the conditional variable.
+3. Data Reconstruction and Sampling:
+   - The decoder reconstructs the data from the sampled latent variables and the conditional input y, ensuring the generated data aligns with the conditioning criteria.
+4. Output:
+   - The generated synthetic tabular data can be exported back to CSV format for practical use.
+
+Problem Context
+---------------
+My data consists of a set of positions in addition to their corresponding momenta for an atomic explosion. The problem is to train a conditional Variational Auto-encoder to solve this inverse problem and predict the initial positions based on their momenta after explosion.
+
+Dataset:
+- There are 3 atoms in 3 dimensions: Carbon, Oxygen, and Sulfur (X, Y, Z axes).
+- Data is imported as below:
+  ```
+  data = pd.read_csv(FILEPATH)
+  position = data[['cx', 'cy', 'cz', 'ox', 'oy', 'oz', 'sx', 'sy', 'sz']].values
+  momenta = data[['pcx', 'pcy', 'pcz', 'pox', 'poy', 'poz', 'psx', 'psy', 'psz']].values
+  ```
+- Splits: Training Set (70%), Validation Set (15%), Test Set (15%).
+
+Workflow:
+- The model takes the training positions as input and builds a latent representation for positions.
+- Samples from this learned distribution and adds conditions (momenta) to reconstruct or predict the positions.
+
+Data Leakage Insurance
+-----------------------
+To prevent data leakage:
+- During inference, the CVAE strictly uses latent representations learned from training data.
+- The model generates latent variables by sampling from the latent distribution parameters (mean and standard deviation) computed during training.
+- Decoder uses these sampled latent variables along with test momenta to predict positions.
+
+Loss Function
+-------------
+Training loss includes:
+- L1 Regularization: Adds sum of absolute weights (Σ|w|).
+- L2 Regularization: Adds sum of squared weights (Σw²).
+- β-VAE (KL Divergence): Adds weight β to the KL divergence term in VAE loss: Reconstruction_Loss + β*KL_Divergence.
+
+Evaluation Metrics
+------------------
+1. Mean Relative Error (MRE):
+   ```
+   MRE = |real - predicted| / (|real| + ε) * 100
+   ```
+2. MRE²:
+   ```
+   MRE² = [(real - predicted)/(real)]² * 100
+   ```
+3. Energy Difference (EnergyDiff):
+   ```
+   EnergyDiff = abs(KE - PE) / abs(KE)
+   ```
+
+Energy Definitions
+------------------
+1. Kinetic Energy (KE):
+   ```
+   KE = p²/(2m)
+   ```
+   For Carbon, Oxygen, and Sulfur, compute KE in all 3 dimensions.
+2. Potential Energy (PE):
+   ```
+   PE = 4/rCO + 4/rCS + 4/rOS
+   ```
+   Compute distances (rCO, rCS, rOS) using the 3D distance formula.
+
+Hyperparameters and Flexibility
+-------------------------------
+1. Hidden Layers:
+   - Hidden dimensions and number of layers are configurable.
+   - Layers follow the structure: [hidden_dim * (2^i) for i in range(num_layers)].
+2. Training Configurations:
+   - Early stopping with configurable patience and min_delta.
+   - Flexible learning rate and Adam optimizer.
+3. Normalization:
+   - Options for different normalization methods or no normalization, ensuring invertibility.
+
+Visualizations
+--------------
+1. Learning Curve:
+   - Plot training and validation loss for the first 10 epochs and the rest separately.
+   - Use training loss without regularization for learning curves.
+
+Post-Training Analysis
+----------------------
+1. Use original scale for positions during evaluation.
+2. Print all metrics and display random samples from the test set with real and predicted positions.
+
+Example Outputs
+---------------
+For Carbon:
+```
+x: |1.2801 - 1.3000|/|1.2801| * 100 = 1.55%
+y: |1.8885 - 1.9000|/|1.8885| * 100 = 0.61%
+z: |-0.0644 - (-0.0600)|/|-0.0644| * 100 = 6.83%
+...
+```
+

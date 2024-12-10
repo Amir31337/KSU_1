@@ -1,0 +1,3 @@
+Average MRE: 82.67%
+Average MSE: 0.783112
+Average Energy Difference: 4.73e-02

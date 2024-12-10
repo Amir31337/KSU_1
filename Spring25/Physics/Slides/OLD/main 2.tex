@@ -1,0 +1,189 @@
+\documentclass{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+%\usepackage[fleqn]{amsmath}
+
+\title{GRIPex 6-Month Progress Report}
+\author{AmirHossein Ghanaatian \and Prof. Doina Caragea}
+\date{August 2024}
+
+
+
+\begin{document}
+\maketitle
+\section*{Project Title}
+Reconstructing Atomic Positions from Coulomb Explosion Data
+
+\section*{Accomplishments/Progress for the First Year}
+\begin{itemize}
+    \item Obtained a large simulated dataset of 1 million examples containing initial positions and final momenta of atoms (carbon, oxygen, sulfur) from Coulomb explosion experiments, stored in CSV format
+    \item Implemented and evaluated several deep learning models for reconstructing initial atomic positions from final momenta data:
+\begin{itemize}[label={-}]
+    \item Variational Autoencoder (VAE) and Conditional Variational Autoencoder (CVAE) with some functions of momenta and atomic masses as conditions
+    \item Variational Diffusion Model (VDM) using PyTorch and JAX
+    \item Invertible Neural Networks (INNs) and Conditional INNs
+    \item Simple Encoder-Decoder Model
+    \item Repainting Models (V1, V2, V3)\textsuperscript{*}
+        \vspace{1em}
+        
+        \footnotesize{*The repainting models (V1, V2, V3) represent a novel approach in this project, drawing inspiration from style transfer and image repainting techniques in the domain of computer vision. These models aim to learn the conditional probability distribution $p(x|y)$ of the original atomic positions $x$ given the observed final momenta $y$. By learning this distribution, the models can reconstruct the initial atomic configuration from the Coulomb explosion data.
+        This approach shares conceptual similarities with probabilistic autoencoders, which seek to learn the underlying probability distribution of the input data in order to generate new samples. However, while probabilistic autoencoders typically learn the joint distribution $p(x, y)$, the repainting models focus specifically on the conditional distribution $p(x|y)$.
+        By investigating the literature on style transfer and image repainting, we aim to identify techniques and insights that can be adapted to our problem of reconstructing initial atomic positions. This cross-domain knowledge transfer has the potential to inform the development of novel architectures and loss functions for the repainting models in our project.}
+    \end{itemize}
+    
+        
+    \item Derived several potential conditions from the momenta data and atomic masses to use in the CVAE and CINN models:
+    \begin{itemize}[label={-}]
+        \item Individual momentum magnitudes: $|p_C|$, $|p_O|$, $|p_S|$
+        \item Total momentum magnitude: $|p_{total}|$
+        \item Momentum ratios: $r_C$, $r_O$, $r_S$
+        \item Pairwise momentum differences: $\Delta p_{CO}$, $\Delta p_{CS}$, $\Delta p_{OS}$
+        \item Momentum dot products: $p_C \cdot p_O$, $p_C \cdot p_S$, $p_O \cdot p_S$
+        \item Angles between momentum vectors: $\theta_{CO}$, $\theta_{CS}$, $\theta_{OS}$
+        \item Atomic masses: $m_c$, $m_o$, $m_s$
+    \end{itemize}
+    \item Example conditions used in CINN models:
+    \begin{itemize}[label={-}]
+        \item Momentum magnitudes condition: [59.67, 343.54, 401.49]
+        \item Momentum ratios condition: [0.0741, 0.4269, 0.4989]
+        \item Pairwise momentum differences condition: [-283.87, -341.82, -57.95]
+        \item Momentum dot products condition: [19312.92, -23199.92, -134027.79]
+        \item Angles between momentum vectors condition: [1.6708, 2.6125, 2.8379]
+        \item Atomic masses: $m_c = 21894.713607956142$, $m_o = 29164.39289099079$, $m_s = 58441.80486812706$
+    \end{itemize}
+    \item Optimized model hyperparameters using techniques like grid search and Bayesian optimization
+    \item Consulted with the Physics department to gain insight into the physical meaning behind the derived conditions and their relevance to the Coulomb explosion process
+\item Errors
+% Mean squared error (MSE)
+\begin{equation}
+    \text{MSE} = \frac{1}{n} \sum_{i=1}^{n} (Y_i - \hat{Y}_i)^2
+    \label{eq:mse}
+\end{equation}
+\begin{flushleft}
+\text{Where:}\\[0.5em]
+\begin{tabular}{@{}r@{\ }l@{}}
+    MSE & = mean squared error \\
+    $n$ & = number of data points \\
+    $Y_i$ & = observed values \\
+    $\hat{Y}_i$ & = predicted values
+\end{tabular}
+\end{flushleft}
+
+% Mean absolute error (MAE)
+\begin{equation}
+    \text{MAE} = \frac{\sum_{i=1}^n |y_i - x_i|}{n}
+    \label{eq:mae}
+\end{equation}
+\begin{flushleft}
+\text{Where:}\\[0.5em]
+\begin{tabular}{@{}r@{\ }l@{}}
+    MAE & = mean absolute error \\
+    $y_i$ & = prediction \\
+    $x_i$ & = true value \\
+    $n$ & = total number of data points
+\end{tabular}
+\end{flushleft}
+
+% R squared (R²)
+\begin{equation}
+    R^2 = 1 - \frac{\text{RSS}}{\text{TSS}}
+    \label{eq:r_squared}
+\end{equation}
+\begin{flushleft}
+\text{Where:}\\[0.5em]
+\begin{tabular}{@{}r@{\ }l@{}}
+    $R^2$ & = coefficient of determination \\
+    RSS & = sum of squares of residuals \\
+    TSS & = total sum of squares
+\end{tabular}
+\end{flushleft}
+
+Which in equation \ref{eq:rss} and \ref{eq:tss} all the terms are fully explained.
+% Residual Sum of Squares (RSS)
+\begin{equation}
+    \text{RSS} = \sum_{i=1}^n (y_i - f(x_i))^2
+    \label{eq:rss}
+\end{equation}
+\begin{flushleft}
+\text{Where:}\\[0.5em]
+\begin{tabular}{@{}r@{\ }l@{}}
+    RSS & = residual sum of squares \\
+    $y_i$ & = $i$th value of the variable to be predicted \\
+    $f(x_i)$ & = predicted value of $y_i$ \\
+    $n$ & = upper limit of summation
+\end{tabular}
+\end{flushleft}
+
+% Total Sum of Squares (TSS)
+\begin{equation}
+    \text{TSS} = \sum_{i=1}^n (y_i - \bar{y})^2
+    \label{eq:tss}
+\end{equation}
+\begin{flushleft}
+\text{Where:}\\[0.5em]
+\begin{tabular}{@{}r@{\ }l@{}}
+    TSS & = total sum of squares \\
+    $n$ & = number of observations \\
+    $y_i$ & = value in a sample \\
+    $\bar{y}$ & = mean value of a sample
+\end{tabular}
+\end{flushleft}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|c|c|c|}
+\hline
+ERRORS & MSE & MAE & R2 \\
+\hline
+SimpleVAE & 1.16 & 0.86 & 0.24 \\
+CVAE & 1.14 & 0.85 & 0.24 \\
+Repainting V1 & 1.04 & 0.82 & 0.28 \\
+Repainting V2 & 1.04 & 0.82 & 0.28 \\
+Repainting V3 & 1.04 & 0.82 & 0.28 \\
+VDM & 1.04 & 0.82 & 0.28 \\
+Simple Encoder Decoder & 1.06 & 0.82 & 0.28 \\
+SimpleINN & 1.05 & 0.81 & 0.28 \\
+CINN V1 & 1.04 & 0.81 & 0.28 \\
+CINN V2 & 1.04 & 0.81 & 0.28 \\
+CINN V3 & 1.04 & 0.81 & 0.28 \\
+CINN V4 & 1.05 & 0.81 & 0.28 \\
+CINN V5 & 1.04 & 0.81 & 0.28 \\
+CINN V6 & 1.04 & 0.81 & 0.28 \\
+CINN V7 & 1.04 & 0.81 & 0.28 \\
+CINN V8 & 1.04 & 0.81 & 0.28 \\
+CINN V9 & 1.05 & 0.82 & 0.28 \\
+CINN V10 & 1.04 & 0.81 & 0.28 \\
+\hline
+\end{tabular}
+\caption{Comparison of model performance using mean squared error (MSE), mean absolute error (MAE), and R-squared (R2) metrics.}
+\label{tab:model-comparison}
+\end{table}
+\vspace{1em}
+\footnotesize Conclusion :
+The comparative analysis of various models' performances over the past indicates a notable improvement in reconstruction accuracy of atomic positions from Coulomb explosion data. Most notably, the Repainting and CINN models have demonstrated a higher consistency in reducing the mean squared error (MSE) and mean absolute error (MAE) while slightly improving the R-squared (R2) value compared to the baseline models like SimpleVAE and CVAE. These advancements suggest that the innovative approaches in model architecture and condition formulation are effective in capturing the underlying dynamics of the system. Moving forward, the focus will be on further enhancing these models to achieve even higher accuracy and reliability in predictions, ensuring that the models not only perform well statistically but also provide physically meaningful reconstructions.
+
+\end{itemize}
+
+
+\section*{Expected Accomplishments/Progress for the Next Year}
+\begin{itemize}
+    \item Following the comparative analysis of various models and their performances this year, the primary goal for the upcoming year is to refine and possibly develop a new model that substantially improves the R-squared (R2) value. This will involve exploring advanced modeling techniques that can better capture the complex dependencies in the data, thereby improving prediction accuracy.
+    \item Implement advanced feature engineering techniques to better represent the physical phenomena underlying the Coulomb explosion data, which may help in developing a more effective model.
+    \item Collaborate with computational physicists to explore new theoretical frameworks that might offer insights into more effective ways of structuring our models.
+    \item Further refine the hyperparameter optimization process to fine-tune model performances, focusing on achieving higher fidelity in the reconstruction of atomic positions.
+\end{itemize}
+
+
+\section*{Issues and Mitigations}
+\begin{itemize}
+    \item One of the central challenges faced this year has been identifying robust conditions that can significantly enhance the model's predictive accuracy. While current models primarily utilize functions of momenta and atomic masses as conditions, next year's efforts will need to explore alternative or additional conditions that might better capture the complexities of the system.
+    \item Investigate the incorporation of additional physical parameters or derived features, such as energy distributions or more complex vector relationships, which may provide new insights and improve the model's learning capacity.
+    \item Engage in deeper consultations with domain experts in physics to understand potential overlooked variables that could be critical in improving the models.
+    \item Address the issue of overfitting seen in some of the more complex models by enhancing regularization strategies and experimenting with different network architectures that may offer better generalization on unseen data.
+\end{itemize}
+
+
+\end{document}

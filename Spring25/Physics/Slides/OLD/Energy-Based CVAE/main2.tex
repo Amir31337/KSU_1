@@ -1,0 +1,191 @@
+\documentclass[a4paper,10pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\geometry{margin=1in}
+
+% Header and Footer Setup
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Conditional Variational Autoencoders (CVAEs)}
+\fancyhead[R]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% Hyperref Setup
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    pdftitle={Conditional Variational Autoencoders (CVAEs)},
+    pdfpagemode=FullScreen,
+}
+
+\begin{document}
+
+% Title Page
+\begin{titlepage}
+    \centering
+    \vspace*{2cm}
+    
+    {\LARGE \textbf{Conditional Variational Autoencoders (CVAEs)}}
+    
+    \vspace{1.5cm}
+    
+    {\large \textbf{Author:} \\
+    A. Ghanaatian}
+    
+    \vfill
+    
+    {\large \textbf{Date:} \\
+    November 25, 2024}
+    
+\end{titlepage}
+
+
+\section{Introduction}
+% You can add an introduction section here if needed.
+
+\section{Concept and Mechanism}
+
+\subsection{Variational Autoencoder Foundation}
+Conditional Variational Autoencoders (CVAEs) are built upon the Variational Autoencoder (VAE) architecture, which learns latent representations of data by encoding inputs into a probabilistic latent space. This enables the generation of similar yet diverse data by sampling from this space.
+
+\subsection{Conditional Extension}
+Unlike standard VAEs, CVAEs incorporate a conditional input (e.g., specific class labels or features) to guide the data generation process. This additional input allows CVAEs to generate data conditioned on specific attributes, making them ideal for applications such as synthetic data augmentation and anomaly detection in structured tabular datasets.
+
+\section{Algorithm Workflow}
+
+\subsection{Input Processing}
+Data is preprocessed and encoded into a conditional latent representation. The CSV files are typically transformed into a format suitable for neural network inputs (e.g., normalized tensors).
+
+\subsection{Learning Conditional Distributions}
+The encoder learns a conditional posterior \( q(z \mid x, y) \), where \( x \) represents the input features (positions) and \( y \) is the conditional variable (momenta).
+
+\subsection{Data Reconstruction and Sampling}
+The decoder reconstructs the data from the sampled latent variables and the conditional input \( y \), ensuring the generated data aligns with the conditioning criteria.
+
+\subsection{Output}
+The generated synthetic tabular data can be exported back to CSV format for practical use.
+
+\section{Energy Calculations}
+
+\subsection{Kinetic Energy (KE)}
+\begin{equation}
+KE = KE(C) + KE(O) + KE(S)
+\end{equation}
+
+Where:
+\begin{align}
+KE(C) &= \frac{p_{cx}^2}{2m_C} + \frac{p_{cy}^2}{2m_C} + \frac{p_{cz}^2}{2m_C} \\
+KE(O) &= \frac{p_{ox}^2}{2m_O} + \frac{p_{oy}^2}{2m_O} + \frac{p_{oz}^2}{2m_O} \\
+KE(S) &= \frac{p_{sx}^2}{2m_S} + \frac{p_{sy}^2}{2m_S} + \frac{p_{sz}^2}{2m_S}
+\end{align}
+
+Here:
+\begin{align}
+m_C &= 21894.71361 \\
+m_O &= 29164.39289 \\
+m_S &= 58441.80487
+\end{align}
+
+\subsection{Potential Energy (PE)}
+\begin{equation}
+PE = \frac{4}{r_{CO}} + \frac{4}{r_{CS}} + \frac{4}{r_{OS}}
+\end{equation}
+
+Where:
+\begin{align}
+r_{CO} &= \sqrt{(c_x - o_x)^2 + (c_y - o_y)^2 + (c_z - o_z)^2} \\
+r_{CS} &= \sqrt{(c_x - s_x)^2 + (c_y - s_y)^2 + (c_z - s_z)^2} \\
+r_{OS} &= \sqrt{(o_x - s_x)^2 + (o_y - s_y)^2 + (o_z - s_z)^2}
+\end{align}
+
+\subsection{Error}
+\begin{equation}
+\text{Error} = \frac{\lvert KE - PE \rvert}{\lvert KE \rvert}
+\end{equation}
+
+\section{Ensuring No Data Leakage During Inference}
+
+To prevent data leakage and maintain the integrity of the model’s evaluation, the CVAEs strictly use latent representations learned from the training data during inference on the test data. Specifically:
+
+\subsection{Training Phase}
+The model encodes training positions to learn the latent space parameters (mean and standard deviation).
+
+\subsection{Testing Phase}
+The model does not encode the test positions to obtain latent variables. Instead, it generates latent variables by sampling from the latent distribution parameters derived from the training latent space. The decoder then uses these sampled latent variables along with the test momenta to predict the positions.
+
+This approach ensures that test positions are not utilized at any point during inference, thereby preventing data leakage.
+
+\section{Loss Function and Metrics}
+
+\subsection{Loss Function}
+The loss comprises several differentiable terms:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Reconstruction Loss (MSE):} Measures how well the decoder reconstructs the input positions.
+    \item \textbf{MRE\textsuperscript{2} (Mean Relative Error Squared):}
+    \begin{equation}
+    \text{MRE}^2 = \text{average} \left\{ \sum \left( \frac{\text{real position} - \text{predicted position}}{\text{real position}} \right)^2 \right\}
+    \end{equation}
+    \item \textbf{EnergyDiff\textsuperscript{2}:}
+    \begin{equation}
+    \text{EnergyDiff}^2 = \text{average} \left\{ \sum \left( \frac{\text{KE} - \text{PE}}{\text{KE}} \right)^2 \right\}
+    \end{equation}
+    \item \textbf{KL Divergence:} \( \beta \) weighted to control the trade-off between reconstruction quality and latent space regularization.
+    \item \textbf{Regularization Terms:} L1 (Lasso) and L2 (Ridge) regularizations to promote sparsity and prevent overfitting.
+\end{itemize}
+
+\textbf{Total Loss:}
+\begin{equation}
+\text{Loss} = \text{MSE} + \alpha \cdot \text{MRE}^2 + \gamma \cdot \text{EnergyDiff}^2 + \beta \cdot \text{KL Divergence} + \lambda_1 \cdot \text{L1} + \lambda_2 \cdot \text{L2}
+\end{equation}
+
+\subsection{Metrics}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Mean Relative Error (MRE):}
+    \begin{equation}
+    \text{MRE} = \frac{\lvert \text{real} - \text{predicted} \rvert}{\lvert \text{real} \rvert + \epsilon} \times 100, \quad \text{where } \epsilon = 1 \times 10^{-10}.
+    \end{equation}
+    \item \textbf{Mean Squared Error (MSE):} Standard MSE between real and predicted positions.
+    \item \textbf{EnergyDiff:}
+    \begin{equation}
+    \text{EnergyDiff} = \frac{\lvert KE - PE \rvert}{\lvert KE \rvert}.
+    \end{equation}
+\end{itemize}
+
+\section{Training Procedure}
+
+\subsection{Hyperparameters and Architecture}
+\begin{itemize}[leftmargin=*]
+    \item All parameters and hyperparameters are configurable at the beginning of the script.
+    \item The hidden layers are dynamically defined based on the hidden dimension size and the number of hidden layers. For example, with a hidden dimension size of 64 and 3 hidden layers, the hidden layers will be [64, 128, 256].
+\end{itemize}
+
+\subsection{Optimization and Early Stopping}
+\begin{itemize}[leftmargin=*]
+    \item Utilizes the Adam optimizer with a flexible learning rate.
+    \item Implements early stopping based on validation loss with configurable patience and min\_delta parameters.
+\end{itemize}
+
+\subsection{Learning Curves}
+Plots two learning curves:
+\begin{itemize}[leftmargin=*]
+    \item First 10 Epochs
+    \item Remaining Epochs
+\end{itemize}
+The learning curves are based on the training loss without regularization to provide clear insights into the model's convergence.
+
+\section{Evaluation and Output}
+
+\begin{itemize}[leftmargin=*]
+    \item After training, the model evaluates the test set using un-normalized positions to ensure metrics reflect the original data scale.
+    \item The script prints the MRE, MSE, and EnergyDiff metrics.
+    \item Additionally, it displays \( S \) random samples from the test phase, showcasing both real and predicted positions for comparison.
+\end{itemize}
+
+\end{document}

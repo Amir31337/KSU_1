@@ -1,0 +1,1424 @@
+\documentclass[10pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb}
+\usepackage{listings}
+\usepackage{color}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{enumitem}
+
+\geometry{a4paper, margin=1in}
+
+% Define colors for code listings
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+% Define the style for listings
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2
+}
+
+\lstset{style=mystyle}
+
+% Title and Author
+\title{Comprehensive Report on Conditional Variational Autoencoder (CVAE) Model Training and Evaluation}
+\author{Amirhossein Ghanaatian}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\newpage
+
+\section{Introduction}
+This report provides a detailed overview of the training and evaluation process of a Conditional Variational Autoencoder (CVAE) model. It encompasses data preparation, normalization, model architecture, training procedures, inference mechanisms, compliance with data handling policies, and additional considerations to ensure robust and reliable performance.
+
+\section{Data Preparation}
+
+\subsection{Data Splitting}
+The dataset is divided into three distinct subsets: training, validation, and testing. The splitting strategy ensures that the test set remains entirely unseen during both the training and validation phases, thereby preventing data leakage.
+
+\begin{lstlisting}[language=Python, caption=Data Splitting Procedure]
+train_position, temp_position, train_momenta, temp_momenta = train_test_split(
+    position, momenta, test_size=0.3, random_state=42
+)
+
+val_position, test_position, val_momenta, test_momenta = train_test_split(
+    temp_position, temp_momenta, test_size=0.5, random_state=42
+)
+\end{lstlisting}
+
+\textbf{Details:}
+\begin{itemize}
+    \item \textbf{Training Set}: 70\% of the data.
+    \item \textbf{Validation Set}: 15\% of the data.
+    \item \textbf{Test Set}: 15\% of the data.
+\end{itemize}
+
+This separation strategy ensures that the test set is not utilized in any form during the model training or validation processes.
+
+\subsection{Normalization}
+Normalization is crucial for ensuring that the model trains efficiently and converges faster. The normalization process involves scaling the data using scalers fitted exclusively on the training data.
+
+\begin{lstlisting}[language=Python, caption=Normalization Procedure]
+if position_scaler is not None:
+    train_position_norm = torch.FloatTensor(position_scaler.fit_transform(train_position.cpu())).to(device)
+    val_position_norm = torch.FloatTensor(position_scaler.transform(val_position.cpu())).to(device)
+    test_position_norm = torch.FloatTensor(position_scaler.transform(test_position.cpu())).to(device)
+
+if momenta_scaler is not None:
+    train_momenta_norm = torch.FloatTensor(momenta_scaler.fit_transform(train_momenta.cpu())).to(device)
+    val_momenta_norm = torch.FloatTensor(momenta_scaler.transform(val_momenta.cpu())).to(device)
+    test_momenta_norm = torch.FloatTensor(momenta_scaler.transform(test_momenta.cpu())).to(device)
+\end{lstlisting}
+
+\textbf{Key Points:}
+\begin{itemize}
+    \item Scalability is achieved using either \texttt{StandardScaler} or \texttt{MinMaxScaler}.
+    \item Only the training data is used to fit the scalers, ensuring no information leakage.
+    \item The same scaler parameters are applied to the validation and test sets.
+\end{itemize}
+
+\section{Model Architecture}
+
+\subsection{Overview of CVAE}
+A Conditional Variational Autoencoder (CVAE) extends the standard Variational Autoencoder (VAE) by conditioning the generation process on additional information. In this implementation, the CVAE predicts positions based on corresponding momenta, thereby learning the relationship between these two datasets.
+
+\subsection{Detailed Layer-by-Layer Analysis}
+The CVAE architecture consists of an encoder and a decoder, both built using fully connected (linear) layers interleaved with activation functions. Below is a comprehensive breakdown of each layer and its role within the model.
+
+\subsubsection{Encoder Structure}
+\begin{lstlisting}[language=Python, caption=Encoder Definition]
+class CVAE(nn.Module):
+    def __init__(self, input_dim, latent_dim, condition_dim, hidden_layers, activation_function):
+        super(CVAE, self).__init__()
+
+        # Encoder
+        encoder_layers = []
+        encoder_layers.append(nn.Linear(input_dim, hidden_layers[0]))
+        encoder_layers.append(activation_function)
+        for i in range(len(hidden_layers) - 1):
+            encoder_layers.append(nn.Linear(hidden_layers[i], hidden_layers[i+1]))
+            encoder_layers.append(activation_function)
+        self.encoder = nn.Sequential(*encoder_layers)
+
+        self.fc_mu = nn.Linear(hidden_layers[1], latent_dim)
+        self.fc_logvar = nn.Linear(hidden_layers[1], latent_dim)
+        
+        # Decoder
+        decoder_layers = []
+        decoder_layers.append(nn.Linear(latent_dim + condition_dim, hidden_layers[1]))
+        decoder_layers.append(activation_function)
+        for i in reversed(range(len(hidden_layers) - 1)):
+            decoder_layers.append(nn.Linear(hidden_layers[i+1], hidden_layers[i]))
+            decoder_layers.append(activation_function)
+        decoder_layers.append(nn.Linear(hidden_layers[0], input_dim))
+        self.decoder = nn.Sequential(*decoder_layers)
+\end{lstlisting}
+
+\textbf{Layer Breakdown:}
+\begin{itemize}
+    \item \textbf{Linear Layers}: Perform affine transformations mapping input features to output features.
+    \item \textbf{Activation Functions}: Introduce non-linearity; Sigmoid functions are used in this architecture.
+    \item \textbf{Latent Space}: Two separate linear layers compute the mean (\texttt{mu}) and log variance (\texttt{logvar}) of the latent distribution.
+\end{itemize}
+
+\subsubsection{Decoder Structure}
+\begin{lstlisting}[language=Python, caption=Decoder Definition]
+    def decode(self, z, condition):
+        combined = torch.cat((z, condition), dim=1)
+        return self.decoder(combined)
+\end{lstlisting}
+
+\textbf{Decoder Flow:}
+\begin{itemize}
+    \item Concatenates the latent variable \( z \) with the conditional input (momenta).
+    \item Passes the combined vector through the decoder network to reconstruct the position.
+\end{itemize}
+
+\subsubsection{Parameter Count Validation}
+\paragraph{Encoder Parameters:}
+\begin{itemize}
+    \item Linear1: \( 9 \times 307 + 307 = 3,070 \) parameters.
+    \item Linear4: \( 307 \times 153 + 153 = 47,124 \) parameters.
+    \item Linear7 \& Linear8: Each has \( 153 \times 1414 + 1414 = 217,756 \) parameters.
+    \item \textbf{Total Encoder Parameters}: \( 3,070 + 47,124 + 435,512 = 485,706 \).
+\end{itemize}
+
+\paragraph{Decoder Parameters:}
+\begin{itemize}
+    \item Linear9: \( 1423 \times 153 + 153 = 217,872 \) parameters.
+    \item Linear12: \( 153 \times 307 + 307 = 47,278 \) parameters.
+    \item Linear15: \( 307 \times 9 + 9 = 2,772 \) parameters.
+    \item \textbf{Total Decoder Parameters}: \( 217,872 + 47,278 + 2,772 = 267,922 \).
+\end{itemize}
+
+\paragraph{Grand Total Parameters:} \( 485,706 + 267,922 = 753,628 \).
+
+This count aligns with the \texttt{torchsummary} output, confirming the accuracy of the model architecture.
+
+\section{Model Training}
+
+\subsection{Training Loop}
+The training process involves iterating over multiple epochs, updating the model parameters based on the loss computed from the training data, and validating the performance on the validation set.
+
+\begin{lstlisting}[language=Python, caption=Training Loop]
+for epoch in range(EPOCHS):
+    model.train()
+    # Training steps...
+    
+    # Validation steps...
+    
+    # Early stopping based on validation loss...
+\end{lstlisting}
+
+\textbf{Key Points:}
+\begin{itemize}
+    \item The model is trained exclusively on the training set.
+    \item Validation data is used solely for monitoring performance and implementing early stopping.
+    \item The test set remains untouched during both training and validation.
+\end{itemize}
+
+\subsection{Regularization: L1 Regularization}
+L1 regularization is integrated into the loss function to prevent overfitting by adding a penalty proportional to the absolute values of the model parameters.
+
+\begin{lstlisting}[language=Python, caption=L1 Regularization in Loss Function]
+usel1 = True
+L1LAMBDA = 0.00014087065777225403
+
+def loss_fn(recon_x, x, mu, logvar):
+    recon_loss = nn.functional.mse_loss(recon_x, x, reduction='mean')
+    kl_divergence = 0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    kl_divergence /= x.size(0) * x.size(1)
+    loss = recon_loss + kl_divergence
+    
+    if usel1:
+        l1_loss = 0.0
+        for param in model.parameters():
+            l1_loss += torch.sum(torch.abs(param))
+        loss += L1LAMBDA * l1_loss
+    
+    return loss
+\end{lstlisting}
+
+\textbf{Benefits of L1 Regularization:}
+\begin{itemize}
+    \item \textbf{Preventing Overfitting}: Constrains the model's capacity by penalizing large weights.
+    \item \textbf{Encouraging Sparsity}: Drives less important weights to zero, effectively performing feature selection.
+    \item \textbf{Enhancing Model Robustness}: Limits weight magnitudes, improving stability across diverse datasets.
+\end{itemize}
+
+\section{Inference Without Encoding Test Positions}
+
+\subsection{Latent Statistics from Training Data}
+Only the training data is used to compute the mean and standard deviation of the latent variables. These statistics are essential for sampling latent variables during the inference phase.
+
+\begin{lstlisting}[language=Python, caption=Computing Latent Statistics]
+with torch.no_grad():
+    mu_list = []
+    logvar_list = []
+    z_train_list = []
+    for batch_x, batch_cond in train_loader:
+        mu, logvar = model.encode(batch_x)
+        z = model.reparameterize(mu, logvar)
+        mu_list.append(mu)
+        logvar_list.append(logvar)
+        z_train_list.append(z)
+    
+    mu_train = torch.cat(mu_list, dim=0)
+    logvar_train = torch.cat(logvar_list, dim=0)
+    z_train = torch.cat(z_train_list, dim=0)
+    
+    mu_train_mean = mu_train.mean(dim=0)
+    mu_train_std = mu_train.std(dim=0)
+    
+    torch.save({'mu_train_mean': mu_train_mean.cpu(), 'mu_train_std': mu_train_std.cpu()}, 'latent_stats.pt')
+\end{lstlisting}
+
+\subsection{Decoding Without Encoding Test Positions}
+During inference, latent variables for the test set are sampled based on the training latent statistics, ensuring that test positions remain unseen.
+
+\begin{lstlisting}[language=Python, caption=Decoding Procedure]
+z_sample = torch.randn(len(test_momenta_norm), LATENT_DIM).to(device)
+z_sample = z_sample * mu_train_std.unsqueeze(0) + mu_train_mean.unsqueeze(0)
+
+test_predictions = []
+for i in range(len(test_momenta_norm)):
+    cond = test_momenta_norm[i].unsqueeze(0)
+    pred = model.decode(z_sample[i].unsqueeze(0), cond)
+    test_predictions.append(pred)
+\end{lstlisting}
+
+\textbf{Ensured Compliance:}
+\begin{itemize}
+    \item Test positions are not passed through the encoder.
+    \item Latent variables are sampled using statistics derived solely from the training set.
+    \item The decoder utilizes only the sampled latent variables and test momenta for predictions.
+\end{itemize}
+
+\section{Summary of Compliance with Policy}
+
+\subsection{No Encoding of Test Positions}
+The test positions are never processed by the encoder. Instead, latent variables for the test set are generated based on the training latent distribution, ensuring complete isolation of the test data during inference.
+
+\subsection{Use of Training Latent Statistics}
+By utilizing the mean and standard deviation from the training latent space, the model guarantees that no information from the test set influences the latent representation.
+
+\subsection{Decoder's Role}
+The decoder strictly uses the sampled latent variables and test momenta to generate predictions, adhering to policies that prevent data leakage.
+
+\section{Additional Considerations}
+
+\subsection{Saving Latent Statistics}
+\begin{lstlisting}[language=Python, caption=Saving Latent Statistics]
+torch.save({'mu_train_mean': mu_train_mean.cpu(), 'mu_train_std': mu_train_std.cpu()}, 'latent_stats.pt')
+\end{lstlisting}
+
+Storing latent statistics ensures reproducibility and consistency in sampling latent variables during inference.
+
+\subsection{Inverse Transformation}
+After decoding, predictions are transformed back to the original scale to maintain consistency in evaluation metrics.
+
+\begin{lstlisting}[language=Python, caption=Inverse Transformation]
+if position_norm_method:
+    test_predictions_inv = position_scaler.inverse_transform(test_predictions.cpu().numpy())
+    test_position_inv = position_scaler.inverse_transform(test_position.cpu().numpy())
+else:
+    test_predictions_inv = test_predictions.cpu().numpy()
+    test_position_inv = test_position.cpu().numpy()
+\end{lstlisting}
+
+\section{Conclusion}
+The CVAE model meticulously adheres to best practices to prevent data leakage and ensure robust evaluation. By confining the test data to the decoder and basing latent variable sampling solely on training statistics, the integrity of the model’s performance assessment is maintained.
+
+\section{Evaluation Metrics}
+
+\subsection{Calculation of Mean Relative Error (MRE)}
+The Mean Relative Error (MRE) is calculated based on the original (inverse-transformed) position scale during the test phase.
+
+\paragraph{Normalization Process:}
+\begin{itemize}
+    \item Training data is fitted and transformed using the scaler.
+    \item Validation and test data are transformed using the same scaler parameters.
+\end{itemize}
+
+\paragraph{Decoding Predictions:}
+\begin{lstlisting}[language=Python, caption=Inverse Transformation and MRE Calculation]
+test_predictions = torch.cat(test_predictions, dim=0)
+
+if position_norm_method:
+    test_predictions_inv = position_scaler.inverse_transform(test_predictions.cpu().numpy())
+    test_position_inv = position_scaler.inverse_transform(test_position.cpu().numpy())
+else:
+    test_predictions_inv = test_predictions.cpu().numpy()
+    test_position_inv = test_position.cpu().numpy()
+
+relative_errors = np.abs(test_predictions_inv - test_position_inv) / (np.abs(test_position_inv) + 1e-8)
+mre = np.mean(relative_errors)
+\end{lstlisting}
+
+\textbf{Relative Error Formula:}
+\[
+\text{Relative Error} = \frac{|\text{Predicted} - \text{True}|}{|\text{True}| + \epsilon}
+\]
+where \( \epsilon = 1 \times 10^{-8} \) to prevent division by zero.
+
+\paragraph{Conclusion:}
+By performing the inverse transformation before calculating MRE, the error metrics accurately reflect the model's performance on the original data scale.
+
+\section{Use of Momenta as the Condition in the CVAE Model}
+
+\subsection{Yes, Momenta are Used as Conditions}
+The model utilizes momenta as the conditional input in the Conditional Variational Autoencoder (CVAE), both during training and inference.
+
+\paragraph{Data Preparation:}
+\begin{lstlisting}[language=Python, caption=Data Preparation]
+position = data[[cx, cy, cz, ox, oy, oz, sx, sy, sz]].values
+momenta = data[[pcx, pcy, pcz, pox, poy, poz, psx, psy, psz]].values
+\end{lstlisting}
+
+\paragraph{Data Loaders:}
+\begin{lstlisting}[language=Python, caption=Data Loaders Setup]
+train_loader = DataLoader(TensorDataset(train_position_norm, train_momenta_norm), batch_size=BATCHSIZE, shuffle=True)
+val_loader = DataLoader(TensorDataset(val_position_norm, val_momenta_norm), batch_size=BATCHSIZE, shuffle=False)
+\end{lstlisting}
+
+\paragraph{Model Definition and Training:}
+\begin{lstlisting}[language=Python, caption=Model Forward Pass]
+def forward(self, x, condition):
+    mu, logvar = self.encode(x)
+    z = self.reparameterize(mu, logvar)
+    recon_x = self.decode(z, condition)
+    return recon_x, mu, logvar
+\end{lstlisting}
+
+During inference, the decoder uses the sampled latent variables along with the test momenta to generate predictions, reinforcing that momenta serve as conditions throughout the pipeline.
+
+\section{Understanding L1 Regularization}
+
+\subsection{Overview}
+L1 regularization, also known as Least Absolute Deviations (LAD) or Lasso Regularization, is employed to prevent overfitting by adding a penalty proportional to the absolute values of the model parameters.
+
+\[
+\text{L1 Penalty} = \lambda \sum_{i} |\theta_i|
+\]
+
+where:
+\begin{itemize}
+    \item \( \lambda \) is the regularization coefficient.
+    \item \( \theta_i \) represents each model parameter.
+\end{itemize}
+
+\subsection{Purpose and Benefits}
+\begin{itemize}
+    \item \textbf{Preventing Overfitting}: Constrains model complexity by penalizing large weights.
+    \item \textbf{Encouraging Sparsity}: Drives less important weights to zero, effectively performing feature selection.
+    \item \textbf{Enhancing Model Robustness}: Limits weight magnitudes, improving stability across varied datasets.
+\end{itemize}
+
+\subsection{Implementation in the Script}
+\begin{lstlisting}[language=Python, caption=L1 Regularization Integration]
+usel1 = True
+L1LAMBDA = 0.00014087065777225403
+
+def loss_fn(recon_x, x, mu, logvar):
+    recon_loss = nn.functional.mse_loss(recon_x, x, reduction='mean')
+    kl_divergence = 0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    kl_divergence /= x.size(0) * x.size(1)
+    loss = recon_loss + kl_divergence
+    
+    if usel1:
+        l1_loss = 0.0
+        for param in model.parameters():
+            l1_loss += torch.sum(torch.abs(param))
+        loss += L1LAMBDA * l1_loss
+    
+    return loss
+\end{lstlisting}
+
+\textbf{Components:}
+\begin{itemize}
+    \item \textbf{Reconstruction Loss}: Measures how well the model reconstructs the input.
+    \item \textbf{KL Divergence}: Regularizes the latent space.
+    \item \textbf{L1 Loss}: Conditionally added based on the \texttt{usel1} flag.
+\end{itemize}
+
+\subsection{Impact on Model Training}
+\begin{itemize}
+    \item \textbf{Penalizing Large Weights}: Discourages any single parameter from dominating the model.
+    \item \textbf{Promoting Sparsity}: Encourages simpler models with fewer active connections.
+    \item \textbf{Trade-Off Between Fit and Complexity}: Balances the model's ability to fit the data with its complexity to prevent overfitting.
+\end{itemize}
+
+\subsection{Best Practices}
+\begin{itemize}
+    \item \textbf{Choosing \( \lambda \)}: Optimal selection through hyperparameter tuning methods like Grid Search or Bayesian Optimization.
+    \item \textbf{Combining with L2 Regularization}: Utilizing Elastic Net to leverage both sparsity and weight distribution benefits.
+    \item \textbf{Layer-Specific Regularization}: Applying regularization selectively to different layers based on their roles.
+\end{itemize}
+
+\section{Comprehensive Parameter Calculation}
+
+\subsection{Encoder Parameters}
+\begin{itemize}
+    \item \textbf{Linear1}: \( 9 \times 307 + 307 = 3,070 \) parameters.
+    \item \textbf{Linear4}: \( 307 \times 153 + 153 = 47,124 \) parameters.
+    \item \textbf{Linear7 \& Linear8}: Each has \( 153 \times 1414 + 1414 = 217,756 \) parameters.
+    \item \textbf{Total Encoder Parameters}: \( 3,070 + 47,124 + 435,512 = 485,706 \).
+\end{itemize}
+
+\subsection{Decoder Parameters}
+\begin{itemize}
+    \item \textbf{Linear9}: \( 1423 \times 153 + 153 = 217,872 \) parameters.
+    \item \textbf{Linear12}: \( 153 \times 307 + 307 = 47,278 \) parameters.
+    \item \textbf{Linear15}: \( 307 \times 9 + 9 = 2,772 \) parameters.
+    \item \textbf{Total Decoder Parameters}: \( 217,872 + 47,278 + 2,772 = 267,922 \).
+\end{itemize}
+
+\subsection{Grand Total Parameters}
+\[
+485,706 \ (\text{Encoder}) + 267,922 \ (\text{Decoder}) = 753,628 \ (\text{Total})
+\]
+
+This count aligns with the \texttt{torchsummary} output, confirming the model architecture's accuracy.
+
+\section{Activation Function Impact}
+
+\subsection{Choice of Activation: Sigmoid}
+\textbf{Characteristics:}
+\begin{itemize}
+    \item Range: (0, 1)
+    \item Derivative: \( \sigma'(x) = \sigma(x)(1 - \sigma(x)) \)
+\end{itemize}
+
+\textbf{Pros:}
+\begin{itemize}
+    \item Smooth non-linearity allowing the network to model complex functions.
+\end{itemize}
+
+\textbf{Cons:}
+\begin{itemize}
+    \item Vanishing gradients can hinder learning in deep networks.
+    \item Output saturation may limit the expressiveness of the model.
+\end{itemize}
+
+\subsection{Recommendations}
+Consider using alternative activation functions like ReLU or LeakyReLU to mitigate vanishing gradient issues and enhance learning efficiency.
+
+\section{Summary and Insights}
+
+\subsection{Model Complexity}
+\begin{itemize}
+    \item \textbf{Total Parameters}: 753,628
+    \item \textbf{High Latent Dimension (\( LATENTDIM = 1414 \))}:
+    \begin{itemize}
+        \item Enhanced capacity to capture intricate data relationships.
+        \item Increased risk of overfitting and higher computational requirements.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Layer Structure}
+\begin{itemize}
+    \item Symmetrical architecture between encoder and decoder.
+    \item Utilization of \texttt{nn.Sequential} promotes modularity and readability.
+\end{itemize}
+
+\subsection{Regularization and Training}
+\begin{itemize}
+    \item L1 regularization promotes sparsity and prevents overfitting.
+    \item Early stopping based on validation loss prevents unnecessary training epochs.
+\end{itemize}
+
+\subsection{Evaluation Metrics}
+\begin{itemize}
+    \item \textbf{Mean Relative Error (MRE)}: Approximately 48.2\%, indicating significant deviation between predicted and true positions.
+    \item \textbf{Interpretation}: Depending on application requirements, this MRE may necessitate further model refinement.
+\end{itemize}
+
+\section{Conclusion}
+The CVAE model is meticulously designed and trained to ensure robust performance and adherence to best practices. By enforcing strict data handling protocols and integrating effective regularization techniques, the model achieves a balance between complexity and generalization. Future work may involve optimizing hyperparameters, experimenting with different activation functions, and exploring alternative regularization strategies to further enhance performance.
+
+
+section{Architecture}
+
+\subsection{abstract}
+This report presents a comprehensive analysis of a Conditional Variational AutoEncoder (CVAE) tailored for predicting positional data based on corresponding momenta. Extending the standard Variational AutoEncoder (VAE) framework, the CVAE integrates conditional information into both the encoding and decoding processes, thereby enhancing the model's capacity to capture intricate relationships between datasets. The analysis encompasses an overview of the CVAE architecture, a meticulous layer-by-layer examination using outputs from \texttt{torchsummary} and \texttt{torchinfo}, a detailed mapping of these layers to the implemented CVAE class, validation of parameter counts, and an evaluation of the roles and impacts of different layer types and activation functions. Additionally, discrepancies observed between different parameter counts are scrutinized to ensure architectural consistency and integrity.
+\end{abstract}
+
+\subsection{Introduction}
+
+Variational AutoEncoders (VAEs) have established themselves as potent generative models capable of learning complex data distributions through unsupervised learning. The Conditional Variational AutoEncoder (CVAE) enhances this paradigm by conditioning the generative process on additional contextual information, thereby enabling more controlled and meaningful data generation. This report delves into the architectural intricacies of a CVAE designed for predicting positional data conditioned on momenta, elucidating its structural components, layer configurations, parameter distributions, and the implications of specific design choices.
+
+\subsection{Overview of the CVAE Architecture}
+
+The CVAE extends the standard VAE by incorporating conditional information into both the encoder and decoder modules. In the context of this implementation, the CVAE is engineered to predict positions based on corresponding momenta, thereby learning the complex interplay between these two datasets.
+
+\subsubsection{Key Components}
+
+\begin{enumerate}
+    \item \textbf{Encoder}: Processes input positions to generate latent representations, specifically the mean (\texttt{mu}) and log variance (\texttt{logvar}), conditioned on momenta.
+    \item \textbf{Latent Space}: Encapsulates the probabilistic latent variables (\texttt{z}) sampled using the reparameterization trick, facilitating gradient-based optimization.
+    \item \textbf{Decoder}: Reconstructs the positions from the latent variables and the conditioning momenta, effectively mapping back to the original data space.
+\end{enumerate}
+
+\subsection{Detailed Layer-by-Layer Analysis}
+
+A granular examination of each layer within the CVAE architecture is conducted using outputs from both \texttt{torchsummary} and \texttt{torchinfo}. This analysis serves to bridge the theoretical architectural design with its practical implementation.
+
+\subsubsection{\texttt{torchsummary} Output}
+
+The \texttt{torchsummary} output offers a succinct overview of each layer, detailing output shapes and parameter counts as follows:
+
+\begin{table}[H]
+\centering
+\caption{\texttt{torchsummary} Layer Overview}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Layer (Type)} & \textbf{Output Shape} & \textbf{Parameters} \\ \midrule
+Linear1               & [1, 307]              & 3,070                \\
+Sigmoid2              & [1, 307]              & 0                    \\
+Sigmoid3              & [1, 307]              & 0                    \\
+Linear4               & [1, 153]              & 47,124               \\
+Sigmoid5              & [1, 153]              & 0                    \\
+Sigmoid6              & [1, 153]              & 0                    \\
+Linear7               & [1, 1414]             & 217,756              \\
+Linear8               & [1, 1414]             & 217,756              \\
+Linear9               & [1, 153]              & 217,872              \\
+Sigmoid10             & [1, 153]              & 0                    \\
+Sigmoid11             & [1, 153]              & 0                    \\
+Linear12              & [1, 307]              & 47,278               \\
+Sigmoid13             & [1, 307]              & 0                    \\
+Sigmoid14             & [1, 307]              & 0                    \\
+Linear15              & [1, 9]                & 2,772                \\
+\midrule
+\textbf{Total}        &                       & \textbf{753,628}      \\
+\textbf{Trainable Parameters} &               & \textbf{753,628}      \\
+\textbf{Non-trainable Parameters} &           & \textbf{0}            \\
+\textbf{Input size (MB)} &                   & \textbf{0.00}         \\
+\textbf{Forward/backward pass size (MB)} &      & \textbf{0.04}         \\
+\textbf{Params size (MB)} &                   & \textbf{2.87}         \\
+\textbf{Estimated Total Size (MB)} &          & \textbf{2.92}         \\
+\bottomrule
+\end{tabular}
+\label{tab:torchsummary}
+\end{table}
+
+\subsubsection{\texttt{torchinfo} Output}
+
+The \texttt{torchinfo} output provides a more detailed hierarchical view of the model, including recursive layer definitions:
+
+\begin{verbatim}
+==========================================================================================
+Layer (type:depthidx)                   Output Shape              Parameters 
+==========================================================================================
+CVAE                                     [1, 9]                    
+├─Sequential: 11                        [1, 153]                  47,124
+│    └─Linear: 21                       [1, 307]                  3,070
+├─Sequential: 14                                                (recursive)
+│    └─Sigmoid: 22                      [1, 307]                  
+├─Sequential: 13                                                (recursive)
+│    └─Linear: 23                       [1, 153]                  47,124
+├─Sequential: 14                                                (recursive)
+│    └─Sigmoid: 24                      [1, 153]                  
+├─Linear: 15                            [1, 1414]                 217,756
+├─Linear: 16                            [1, 1414]                 217,756
+├─Sequential: 17                        [1, 9]                    
+│    └─Linear: 25                       [1, 153]                  217,872
+│    └─Sigmoid: 26                      [1, 153]                  
+│    └─Linear: 27                       [1, 307]                  47,278
+│    └─Sigmoid: 28                      [1, 307]                  
+│    └─Linear: 29                       [1, 9]                    2,772
+==========================================================================================
+Total parameters: 800,752
+Trainable parameters: 800,752
+Non-trainable parameters: 0
+Total multadds (M): 0.75
+==========================================================================================
+Input size (MB): 0.00
+Forward/backward pass size (MB): 0.03
+Params size (MB): 3.01
+Estimated Total Size (MB): 3.04
+=========================================================================================
+\end{verbatim}
+
+\textbf{Discrepancy Analysis}: A notable discrepancy exists between the \texttt{torchsummary} and \texttt{torchinfo} outputs, reporting 753,628 and 800,752 total parameters, respectively. This variance is attributed to the recursive interpretation of \texttt{Sequential} blocks in \texttt{torchinfo}, potentially leading to double-counting of parameters. In contrast, \texttt{torchsummary} provides an accurate reflection of the parameter count based on the explicit layer definitions.
+
+\subsection{Mapping Layers to the CVAE Class}
+
+This subsection delineates the correspondence between each layer identified in the model summaries and the respective components within the implemented CVAE class, ensuring clarity and consistency in the architectural blueprint.
+
+\subsubsection{Encoder Structure}
+
+\textbf{Corresponding Code Section}:
+\begin{verbatim}
+# Encoder
+encoder_layers = []
+encoder_layers.append(nn.Linear(input_dim, hidden_layers[0]))
+encoder_layers.append(activation_function)
+for i in range(len(hidden_layers) - 1):
+    encoder_layers.append(nn.Linear(hidden_layers[i], hidden_layers[i+1]))
+    encoder_layers.append(activation_function)
+self.encoder = nn.Sequential(encoder_layers)
+
+self.fc_mu = nn.Linear(hidden_layers[1], latent_dim)
+self.fc_logvar = nn.Linear(hidden_layers[1], latent_dim)
+\end{verbatim}
+
+\textbf{Layer Breakdown}:
+
+\begin{enumerate}
+    \item \textbf{Linear1 (Layer 1)}:
+    \begin{itemize}
+        \item \textbf{Type}: Linear
+        \item \textbf{Input Features}: 9 (positions)
+        \item \textbf{Output Features}: 307 (\texttt{hidden\_layers[0]})
+        \item \textbf{Parameters}: \( 9 \times 307 + 307 = 3,070 \)
+        \item \textbf{Correspondence}: \texttt{encoder\_layers.append(nn.Linear(input\_dim, hidden\_layers[0]))}
+    \end{itemize}
+    
+    \item \textbf{Sigmoid2 \& Sigmoid3 (Layers 2 \& 3)}:
+    \begin{itemize}
+        \item \textbf{Type}: Sigmoid
+        \item \textbf{Output Features}: 307
+        \item \textbf{Parameters}: 0
+        \item \textbf{Correspondence}:
+        \begin{verbatim}
+encoder_layers.append(activation_function)  # Sigmoid2
+encoder_layers.append(activation_function)  # Sigmoid3
+        \end{verbatim}
+    \end{itemize}
+    
+    \item \textbf{Linear4 (Layer 4)}:
+    \begin{itemize}
+        \item \textbf{Type}: Linear
+        \item \textbf{Input Features}: 307
+        \item \textbf{Output Features}: 153 (\texttt{hidden\_layers[1]})
+        \item \textbf{Parameters}: \( 307 \times 153 + 153 = 47,124 \)
+        \item \textbf{Correspondence}: \texttt{encoder\_layers.append(nn.Linear(hidden\_layers[i], hidden\_layers[i+1]))}
+    \end{itemize}
+    
+    \item \textbf{Sigmoid5 \& Sigmoid6 (Layers 5 \& 6)}:
+    \begin{itemize}
+        \item \textbf{Type}: Sigmoid
+        \item \textbf{Output Features}: 153
+        \item \textbf{Parameters}: 0
+        \item \textbf{Correspondence}:
+        \begin{verbatim}
+encoder_layers.append(activation_function)  # Sigmoid5
+encoder_layers.append(activation_function)  # Sigmoid6
+        \end{verbatim}
+    \end{itemize}
+    
+    \item \textbf{Latent Space Layers: Linear7 \& Linear8 (Layers 7 \& 8)}:
+    \begin{itemize}
+        \item \textbf{Type}: Linear
+        \item \textbf{Input Features}: 153
+        \item \textbf{Output Features}: 1414 (\texttt{latent\_dim})
+        \item \textbf{Parameters}: \( 153 \times 1414 + 1414 = 217,756 \) each
+        \item \textbf{Correspondence}:
+        \begin{verbatim}
+self.fc_mu = nn.Linear(hidden_layers[1], latent_dim)      # Linear7
+self.fc_logvar = nn.Linear(hidden_layers[1], latent_dim)  # Linear8
+        \end{verbatim}
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Summary}: The encoder module comprises two linear layers interleaved with sigmoid activations, progressively transforming the 9-dimensional input into a 153-dimensional hidden representation. This hidden layer serves as the foundation for computing the latent variables (\texttt{mu} and \texttt{logvar}), each occupying a 1414-dimensional space.
+
+\subsubsection{Decoder Structure}
+
+\textbf{Corresponding Code Section}:
+\begin{verbatim}
+# Decoder
+decoder_layers = []
+decoder_layers.append(nn.Linear(latent_dim + condition_dim, hidden_layers[1]))
+decoder_layers.append(activation_function)
+for i in reversed(range(len(hidden_layers) - 1)):
+    decoder_layers.append(nn.Linear(hidden_layers[i+1], hidden_layers[i]))
+    decoder_layers.append(activation_function)
+decoder_layers.append(nn.Linear(hidden_layers[0], input_dim))
+self.decoder = nn.Sequential(decoder_layers)
+\end{verbatim}
+
+\textbf{Layer Breakdown}:
+
+\begin{enumerate}
+    \item \textbf{Linear9 (Layer 9)}:
+    \begin{itemize}
+        \item \textbf{Type}: Linear
+        \item \textbf{Input Features}: 1414 (latent\_dim) + 9 (condition\_dim) = 1423
+        \item \textbf{Output Features}: 153 (\texttt{hidden\_layers[1]})
+        \item \textbf{Parameters}: \( 1423 \times 153 + 153 = 217,872 \)
+        \item \textbf{Correspondence}: \texttt{decoder\_layers.append(nn.Linear(latent\_dim + condition\_dim, hidden\_layers[1]))}
+    \end{itemize}
+    
+    \item \textbf{Sigmoid10 \& Sigmoid11 (Layers 10 \& 11)}:
+    \begin{itemize}
+        \item \textbf{Type}: Sigmoid
+        \item \textbf{Output Features}: 153
+        \item \textbf{Parameters}: 0
+        \item \textbf{Correspondence}:
+        \begin{verbatim}
+decoder_layers.append(activation_function)  # Sigmoid10
+decoder_layers.append(activation_function)  # Sigmoid11
+        \end{verbatim}
+    \end{itemize}
+    
+    \item \textbf{Linear12 (Layer 12)}:
+    \begin{itemize}
+        \item \textbf{Type}: Linear
+        \item \textbf{Input Features}: 153
+        \item \textbf{Output Features}: 307 (\texttt{hidden\_layers[0]})
+        \item \textbf{Parameters}: \( 153 \times 307 + 307 = 47,278 \)
+        \item \textbf{Correspondence}: \texttt{decoder\_layers.append(nn.Linear(hidden\_layers[i+1], hidden\_layers[i]))}
+    \end{itemize}
+    
+    \item \textbf{Sigmoid13 \& Sigmoid14 (Layers 13 \& 14)}:
+    \begin{itemize}
+        \item \textbf{Type}: Sigmoid
+        \item \textbf{Output Features}: 307
+        \item \textbf{Parameters}: 0
+        \item \textbf{Correspondence}:
+        \begin{verbatim}
+decoder_layers.append(activation_function)  # Sigmoid13
+decoder_layers.append(activation_function)  # Sigmoid14
+        \end{verbatim}
+    \end{itemize}
+    
+    \item \textbf{Linear15 (Layer 15)}:
+    \begin{itemize}
+        \item \textbf{Type}: Linear
+        \item \textbf{Input Features}: 307
+        \item \textbf{Output Features}: 9 (\texttt{input\_dim})
+        \item \textbf{Parameters}: \( 307 \times 9 + 9 = 2,772 \)
+        \item \textbf{Correspondence}: \texttt{decoder\_layers.append(nn.Linear(hidden\_layers[0], input\_dim))}
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Summary}: The decoder module initiates by concatenating the latent variable (\texttt{z}) with the conditioning momenta, forming a 1423-dimensional vector. This composite vector undergoes a series of linear transformations and sigmoid activations, transitioning through hidden layers of 153 and 307 dimensions, before reconstructing the original 9-dimensional position output.
+
+\subsection{Parameter Count Validation}
+
+Accurate parameter counting is imperative for validating the architectural integrity of the CVAE model. This subsection corroborates the parameter distribution based on the detailed layer analysis, ensuring consistency with model summaries.
+
+\subsubsection{Encoder Parameters}
+
+\begin{itemize}
+    \item \textbf{Linear1}:
+    \begin{itemize}
+        \item \textbf{Parameters}: \( 9 \times 307 + 307 = 3,070 \)
+    \end{itemize}
+    
+    \item \textbf{Linear4}:
+    \begin{itemize}
+        \item \textbf{Parameters}: \( 307 \times 153 + 153 = 47,124 \)
+    \end{itemize}
+    
+    \item \textbf{Linear7 \& Linear8}:
+    \begin{itemize}
+        \item \textbf{Parameters (each)}: \( 153 \times 1414 + 1414 = 217,756 \)
+        \item \textbf{Total for both}: \( 217,756 \times 2 = 435,512 \)
+    \end{itemize}
+\end{itemize}
+
+\textbf{Total Encoder Parameters}: \( 3,070 + 47,124 + 435,512 = 485,706 \)
+
+\subsubsection{Decoder Parameters}
+
+\begin{itemize}
+    \item \textbf{Linear9}:
+    \begin{itemize}
+        \item \textbf{Parameters}: \( 1423 \times 153 + 153 = 217,872 \)
+    \end{itemize}
+    
+    \item \textbf{Linear12}:
+    \begin{itemize}
+        \item \textbf{Parameters}: \( 153 \times 307 + 307 = 47,278 \)
+    \end{itemize}
+    
+    \item \textbf{Linear15}:
+    \begin{itemize}
+        \item \textbf{Parameters}: \( 307 \times 9 + 9 = 2,772 \)
+    \end{itemize}
+\end{itemize}
+
+\textbf{Total Decoder Parameters}: \( 217,872 + 47,278 + 2,772 = 267,922 \)
+
+\subsubsection{Grand Total Parameters}
+
+\begin{itemize}
+    \item \textbf{Encoder}: 485,706
+    \item \textbf{Decoder}: 267,922
+    \item \textbf{Total}: \( 485,706 + 267,922 = 753,628 \)
+\end{itemize}
+
+\textbf{Consistency Check}:
+
+\begin{itemize}
+    \item \texttt{torchsummary}: Reports a total of 753,628 parameters, which aligns accurately with the manual calculation.
+    \item \texttt{torchinfo}: Reports 800,752 parameters, indicating a discrepancy likely attributable to the recursive interpretation of \texttt{Sequential} blocks, leading to potential double-counting of parameters.
+\end{itemize}
+
+\subsection{Understanding the Layer Types and Their Roles}
+
+A comprehensive understanding of the various layer types employed within the CVAE architecture elucidates their specific functions and contributions to the model's overall performance.
+
+\subsubsection{Linear Layers (\texttt{Linear1}, \texttt{Linear4}, \texttt{Linear7}, \texttt{Linear8}, \texttt{Linear9}, \texttt{Linear12}, \texttt{Linear15})}
+
+\begin{itemize}
+    \item \textbf{Function}: Execute affine transformations, mapping input features to output features through learned weights and biases.
+    \item \textbf{Role in CVAE}:
+    \begin{itemize}
+        \item \textbf{Encoder}: Transform input positions into hidden representations, culminating in the computation of latent variables (\texttt{mu} and \texttt{logvar}).
+        \item \textbf{Latent Space}: \texttt{Linear7} and \texttt{Linear8} compute the mean and log variance of the latent distribution.
+        \item \textbf{Decoder}: Transform latent variables and conditions back into the original data space to reconstruct positions.
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Activation Layers (\texttt{Sigmoid2}, \texttt{Sigmoid3}, etc.)}
+
+\begin{itemize}
+    \item \textbf{Function}: Introduce nonlinearity into the network, enabling the learning of complex patterns.
+    \item \textbf{Role in CVAE}:
+    \begin{itemize}
+        \item Applied after each linear transformation to facilitate the capture of nonlinear relationships between inputs and outputs.
+        \item \textbf{Sigmoid Activation}: Constrains outputs to the range (0, 1), beneficial for certain data distributions but may contribute to vanishing gradient issues in deeper networks.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Architectural Flow}
+
+Understanding the data flow through the encoder, latent space, and decoder is pivotal for comprehending the operational dynamics of the CVAE model.
+
+\subsubsection{Encoder Path}
+
+\begin{enumerate}
+    \item \textbf{Input}: 9-dimensional position vector.
+    \item \textbf{Layer1 (\texttt{Linear1} + \texttt{Sigmoid2} + \texttt{Sigmoid3})}:
+    \begin{itemize}
+        \item Transforms 9D input to 307D.
+        \item Applies sigmoid activation twice, potentially introducing deeper nonlinearity.
+    \end{itemize}
+    \item \textbf{Layer4 (\texttt{Linear4} + \texttt{Sigmoid5} + \texttt{Sigmoid6})}:
+    \begin{itemize}
+        \item Transforms 307D to 153D.
+        \item Applies sigmoid activation twice.
+    \end{itemize}
+    \item \textbf{Latent Variables (\texttt{Linear7} \& \texttt{Linear8})}:
+    \begin{itemize}
+        \item \texttt{Linear7}: Maps 153D to 1414D (\texttt{mu}).
+        \item \texttt{Linear8}: Maps 153D to 1414D (\texttt{logvar}).
+    \end{itemize}
+\end{enumerate}
+
+\subsubsection{Latent Space and Reparameterization}
+
+\textbf{Reparameterization Trick}: Samples latent variables \texttt{z} from the distribution defined by \texttt{mu} and \texttt{logvar} to facilitate gradient flow during backpropagation, ensuring the model remains differentiable.
+
+\subsubsection{Decoder Path}
+
+\begin{enumerate}
+    \item \textbf{Input}: Concatenated latent vector \texttt{z} (1414D) and condition (\texttt{momenta}) 9D $\rightarrow$ 1423D.
+    \item \textbf{Layer9 (\texttt{Linear9} + \texttt{Sigmoid10} + \texttt{Sigmoid11})}:
+    \begin{itemize}
+        \item Transforms 1423D to 153D.
+        \item Applies sigmoid activation twice.
+    \end{itemize}
+    \item \textbf{Layer12 (\texttt{Linear12} + \texttt{Sigmoid13} + \texttt{Sigmoid14})}:
+    \begin{itemize}
+        \item Transforms 153D to 307D.
+        \item Applies sigmoid activation twice.
+    \end{itemize}
+    \item \textbf{Layer15 (\texttt{Linear15})}:
+    \begin{itemize}
+        \item Transforms 307D back to 9D (reconstructed position).
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Parameter Distribution and Model Complexity}
+
+The distribution of parameters across different layers and the overall model complexity bear significant implications for the model's performance, capacity, and computational requirements.
+
+\subsubsection{High Latent Dimension (\texttt{LATENTDIM = 1414})}
+
+\textbf{Implications}:
+
+\begin{itemize}
+    \item \textbf{Increased Model Capacity}: Enhances the model's ability to capture more intricate data distributions, thereby improving reconstruction and generation capabilities.
+    \item \textbf{Risk of Overfitting}: Elevated latent dimensions may lead to the memorization of training data, potentially compromising the model's generalization to unseen data.
+    \item \textbf{Computational Overhead}: A higher number of parameters escalates memory usage and computation time, impacting scalability and efficiency.
+\end{itemize}
+
+\subsubsection{Hidden Layers Configuration (\texttt{hidden\_layers = [307, 153]})}
+
+\begin{itemize}
+    \item \textbf{Encoder}:
+    \begin{itemize}
+        \item \textbf{First Hidden Layer}: 307 neurons.
+        \item \textbf{Second Hidden Layer}: 153 neurons.
+    \end{itemize}
+    \item \textbf{Decoder}:
+    \begin{itemize}
+        \item Mirrors the encoder's hidden layers in reverse, ensuring symmetry and balanced learning across the network.
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Activation Function Choice (\texttt{Sigmoid})}
+
+\textbf{Pros}:
+
+\begin{itemize}
+    \item \textbf{Bounded Outputs}: Stabilizes training by confining outputs within a specific range, which can be advantageous for certain data distributions.
+\end{itemize}
+
+\textbf{Cons}:
+
+\begin{itemize}
+    \item \textbf{Vanishing Gradients}: Gradients diminish as inputs move away from the origin, potentially hindering learning in deeper networks.
+    \item \textbf{Limited Range}: Outputs confined between 0 and 1 may restrict the expressiveness and flexibility of the model.
+\end{itemize}
+
+\textbf{Recommendation}: To mitigate issues associated with sigmoid activations, it is advisable to adopt activation functions such as Rectified Linear Unit (ReLU) or Leaky ReLU. These alternatives alleviate vanishing gradient problems and provide unbounded output ranges, thereby enhancing the model's learning capacity and efficiency.
+
+\subsection{Comprehensive Parameter Calculation}
+
+A meticulous parameter calculation ensures alignment between the implemented architecture and the model summaries, thereby validating architectural consistency.
+
+\subsubsection{Encoder Layers}
+
+\begin{enumerate}
+    \item \textbf{Linear1}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 9
+        \item \textbf{Output Features}: 307
+        \item \textbf{Parameters}: \( 9 \times 307 + 307 = 3,070 \)
+    \end{itemize}
+    
+    \item \textbf{Linear4}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 307
+        \item \textbf{Output Features}: 153
+        \item \textbf{Parameters}: \( 307 \times 153 + 153 = 47,124 \)
+    \end{itemize}
+    
+    \item \textbf{Linear7 \& Linear8}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 153
+        \item \textbf{Output Features}: 1414
+        \item \textbf{Parameters (each)}: \( 153 \times 1414 + 1414 = 217,756 \)
+        \item \textbf{Total for both}: \( 217,756 \times 2 = 435,512 \)
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Total Encoder Parameters}: \( 3,070 + 47,124 + 435,512 = 485,706 \)
+
+\subsubsection{Decoder Layers}
+
+\begin{enumerate}
+    \item \textbf{Linear9}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 1423 (1414 latent + 9 condition)
+        \item \textbf{Output Features}: 153
+        \item \textbf{Parameters}: \( 1423 \times 153 + 153 = 217,872 \)
+    \end{itemize}
+    
+    \item \textbf{Linear12}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 153
+        \item \textbf{Output Features}: 307
+        \item \textbf{Parameters}: \( 153 \times 307 + 307 = 47,278 \)
+    \end{itemize}
+    
+    \item \textbf{Linear15}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 307
+        \item \textbf{Output Features}: 9
+        \item \textbf{Parameters}: \( 307 \times 9 + 9 = 2,772 \)
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Total Decoder Parameters}: \( 217,872 + 47,278 + 2,772 = 267,922 \)
+
+\subsubsection{Grand Total Parameters}
+
+\begin{itemize}
+    \item \textbf{Encoder}: 485,706
+    \item \textbf{Decoder}: 267,922
+    \item \textbf{Total}: \( 485,706 + 267,922 = 753,628 \)
+\end{itemize}
+
+\textbf{Consistency}:
+
+\begin{itemize}
+    \item \texttt{torchsummary}: Reports a total of 753,628 parameters, corroborating the manual calculation.
+    \item \texttt{torchinfo}: Reports 800,752 parameters, suggesting a discrepancy likely due to the recursive interpretation of \texttt{Sequential} blocks within \texttt{torchinfo}.
+\end{itemize}
+
+\subsection{Visualizing the Architectural Flow}
+
+A visual representation of the data flow through the CVAE architecture enhances the comprehension of the model's operational dynamics.
+
+\subsubsection{Encoder Flow}
+
+\begin{enumerate}
+    \item \textbf{Input}: 9-dimensional position vector.
+    \item \textbf{Layer1 (\texttt{Linear1})}: Transforms 9D $\rightarrow$ 307D.
+    \item \textbf{Sigmoid2 \& Sigmoid3}: Applies sigmoid activation twice on 307D.
+    \item \textbf{Layer4 (\texttt{Linear4})}: Transforms 307D $\rightarrow$ 153D.
+    \item \textbf{Sigmoid5 \& Sigmoid6}: Applies sigmoid activation twice on 153D.
+    \item \textbf{Latent Layers}:
+    \begin{itemize}
+        \item \textbf{Layer7 (\texttt{Linear7})}: Maps 153D $\rightarrow$ 1414D (\texttt{mu}).
+        \item \textbf{Layer8 (\texttt{Linear8})}: Maps 153D $\rightarrow$ 1414D (\texttt{logvar}).
+    \end{itemize}
+\end{enumerate}
+
+\subsubsection{Latent Space}
+
+\textbf{Reparameterization Trick}: Samples latent variable \texttt{z} from \( \mathcal{N}(\mu, \sigma^2) \), enabling gradient-based optimization.
+
+\subsubsection{Decoder Flow}
+
+\begin{enumerate}
+    \item \textbf{Input}: Concatenated \texttt{z} (1414D) + condition (\texttt{momenta}, 9D) $\rightarrow$ 1423D.
+    \item \textbf{Layer9 (\texttt{Linear9})}: Transforms 1423D $\rightarrow$ 153D.
+    \item \textbf{Sigmoid10 \& Sigmoid11}: Applies sigmoid activation twice on 153D.
+    \item \textbf{Layer12 (\texttt{Linear12})}: Transforms 153D $\rightarrow$ 307D.
+    \item \textbf{Sigmoid13 \& Sigmoid14}: Applies sigmoid activation twice on 307D.
+    \item \textbf{Layer15 (\texttt{Linear15})}: Transforms 307D $\rightarrow$ 9D (reconstructed position).
+\end{enumerate}
+
+\subsection{Parameter Distribution and Model Complexity}
+
+The distribution of parameters across different layers and the overall model complexity bear significant implications for the model's performance, capacity, and computational requirements.
+
+\subsubsection{High Latent Dimension (\texttt{LATENTDIM = 1414})}
+
+\textbf{Implications}:
+
+\begin{itemize}
+    \item \textbf{Increased Model Capacity}: Enhances the model's ability to capture more intricate data distributions, thereby improving reconstruction and generation capabilities.
+    \item \textbf{Risk of Overfitting}: Elevated latent dimensions may lead to the memorization of training data, potentially compromising the model's generalization to unseen data.
+    \item \textbf{Computational Overhead}: A higher number of parameters escalates memory usage and computation time, impacting scalability and efficiency.
+\end{itemize}
+
+\subsubsection{Hidden Layers Configuration (\texttt{hidden\_layers = [307, 153]})}
+
+\begin{itemize}
+    \item \textbf{Encoder}:
+    \begin{itemize}
+        \item \textbf{First Hidden Layer}: 307 neurons.
+        \item \textbf{Second Hidden Layer}: 153 neurons.
+    \end{itemize}
+    \item \textbf{Decoder}:
+    \begin{itemize}
+        \item Mirrors the encoder's hidden layers in reverse, ensuring symmetry and balanced learning across the network.
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Activation Function Choice (\texttt{Sigmoid})}
+
+\textbf{Pros}:
+
+\begin{itemize}
+    \item \textbf{Bounded Outputs}: Stabilizes training by confining outputs within a specific range, which can be advantageous for certain data distributions.
+\end{itemize}
+
+\textbf{Cons}:
+
+\begin{itemize}
+    \item \textbf{Vanishing Gradients}: Gradients diminish as inputs move away from the origin, potentially hindering learning in deeper networks.
+    \item \textbf{Limited Range}: Outputs confined between 0 and 1 may restrict the expressiveness and flexibility of the model.
+\end{itemize}
+
+\textbf{Recommendation}: To mitigate issues associated with sigmoid activations, it is advisable to adopt activation functions such as Rectified Linear Unit (ReLU) or Leaky ReLU. These alternatives alleviate vanishing gradient problems and provide unbounded output ranges, thereby enhancing the model's learning capacity and efficiency.
+
+\subsection{Comprehensive Parameter Calculation}
+
+A meticulous parameter calculation ensures alignment between the implemented architecture and the model summaries, thereby validating architectural consistency.
+
+\subsubsection{Encoder Layers}
+
+\begin{enumerate}
+    \item \textbf{Linear1}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 9
+        \item \textbf{Output Features}: 307
+        \item \textbf{Parameters}: \( 9 \times 307 + 307 = 3,070 \)
+    \end{itemize}
+    
+    \item \textbf{Linear4}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 307
+        \item \textbf{Output Features}: 153
+        \item \textbf{Parameters}: \( 307 \times 153 + 153 = 47,124 \)
+    \end{itemize}
+    
+    \item \textbf{Linear7 \& Linear8}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 153
+        \item \textbf{Output Features}: 1414
+        \item \textbf{Parameters (each)}: \( 153 \times 1414 + 1414 = 217,756 \)
+        \item \textbf{Total for both}: \( 217,756 \times 2 = 435,512 \)
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Total Encoder Parameters}: \( 3,070 + 47,124 + 435,512 = 485,706 \)
+
+\subsubsection{Decoder Layers}
+
+\begin{enumerate}
+    \item \textbf{Linear9}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 1423 (1414 latent + 9 condition)
+        \item \textbf{Output Features}: 153
+        \item \textbf{Parameters}: \( 1423 \times 153 + 153 = 217,872 \)
+    \end{itemize}
+    
+    \item \textbf{Linear12}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 153
+        \item \textbf{Output Features}: 307
+        \item \textbf{Parameters}: \( 153 \times 307 + 307 = 47,278 \)
+    \end{itemize}
+    
+    \item \textbf{Linear15}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 307
+        \item \textbf{Output Features}: 9
+        \item \textbf{Parameters}: \( 307 \times 9 + 9 = 2,772 \)
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Total Decoder Parameters}: \( 217,872 + 47,278 + 2,772 = 267,922 \)
+
+\subsubsection{Grand Total Parameters}
+
+\begin{itemize}
+    \item \textbf{Encoder}: 485,706
+    \item \textbf{Decoder}: 267,922
+    \item \textbf{Total}: \( 485,706 + 267,922 = 753,628 \)
+\end{itemize}
+
+\textbf{Consistency}:
+
+\begin{itemize}
+    \item \texttt{torchsummary}: Reports a total of 753,628 parameters, corroborating the manual calculation.
+    \item \texttt{torchinfo}: Reports 800,752 parameters, suggesting a discrepancy likely due to the recursive interpretation of \texttt{Sequential} blocks within \texttt{torchinfo}.
+\end{itemize}
+
+\subsection{Visualizing the Architectural Flow}
+
+A visual representation of the data flow through the CVAE architecture enhances the comprehension of the model's operational dynamics.
+
+\subsubsection{Encoder Flow}
+
+\begin{enumerate}
+    \item \textbf{Input}: 9-dimensional position vector.
+    \item \textbf{Layer1 (\texttt{Linear1})}: Transforms 9D $\rightarrow$ 307D.
+    \item \textbf{Sigmoid2 \& Sigmoid3}: Applies sigmoid activation twice on 307D.
+    \item \textbf{Layer4 (\texttt{Linear4})}: Transforms 307D $\rightarrow$ 153D.
+    \item \textbf{Sigmoid5 \& Sigmoid6}: Applies sigmoid activation twice on 153D.
+    \item \textbf{Latent Layers}:
+    \begin{itemize}
+        \item \textbf{Layer7 (\texttt{Linear7})}: Maps 153D $\rightarrow$ 1414D (\texttt{mu}).
+        \item \textbf{Layer8 (\texttt{Linear8})}: Maps 153D $\rightarrow$ 1414D (\texttt{logvar}).
+    \end{itemize}
+\end{enumerate}
+
+\subsubsection{Latent Space}
+
+\textbf{Reparameterization Trick}: Samples latent variable \texttt{z} from \( \mathcal{N}(\mu, \sigma^2) \), enabling gradient-based optimization.
+
+\subsubsection{Decoder Flow}
+
+\begin{enumerate}
+    \item \textbf{Input}: Concatenated \texttt{z} (1414D) + condition (\texttt{momenta}, 9D) $\rightarrow$ 1423D.
+    \item \textbf{Layer9 (\texttt{Linear9})}: Transforms 1423D $\rightarrow$ 153D.
+    \item \textbf{Sigmoid10 \& Sigmoid11}: Applies sigmoid activation twice on 153D.
+    \item \textbf{Layer12 (\texttt{Linear12})}: Transforms 153D $\rightarrow$ 307D.
+    \item \textbf{Sigmoid13 \& Sigmoid14}: Applies sigmoid activation twice on 307D.
+    \item \textbf{Layer15 (\texttt{Linear15})}: Transforms 307D $\rightarrow$ 9D (reconstructed position).
+\end{enumerate}
+
+\subsection{Parameter Distribution and Model Complexity}
+
+The distribution of parameters across different layers and the overall model complexity bear significant implications for the model's performance, capacity, and computational requirements.
+
+\subsubsection{High Latent Dimension (\texttt{LATENTDIM = 1414})}
+
+\textbf{Implications}:
+
+\begin{itemize}
+    \item \textbf{Increased Model Capacity}: Enhances the model's ability to capture more intricate data distributions, thereby improving reconstruction and generation capabilities.
+    \item \textbf{Risk of Overfitting}: Elevated latent dimensions may lead to the memorization of training data, potentially compromising the model's generalization to unseen data.
+    \item \textbf{Computational Overhead}: A higher number of parameters escalates memory usage and computation time, impacting scalability and efficiency.
+\end{itemize}
+
+\subsubsection{Hidden Layers Configuration (\texttt{hidden\_layers = [307, 153]})}
+
+\begin{itemize}
+    \item \textbf{Encoder}:
+    \begin{itemize}
+        \item \textbf{First Hidden Layer}: 307 neurons.
+        \item \textbf{Second Hidden Layer}: 153 neurons.
+    \end{itemize}
+    \item \textbf{Decoder}:
+    \begin{itemize}
+        \item Mirrors the encoder's hidden layers in reverse, ensuring symmetry and balanced learning across the network.
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Activation Function Choice (\texttt{Sigmoid})}
+
+\textbf{Pros}:
+
+\begin{itemize}
+    \item \textbf{Bounded Outputs}: Stabilizes training by confining outputs within a specific range, which can be advantageous for certain data distributions.
+\end{itemize}
+
+\textbf{Cons}:
+
+\begin{itemize}
+    \item \textbf{Vanishing Gradients}: Gradients diminish as inputs move away from the origin, potentially hindering learning in deeper networks.
+    \item \textbf{Limited Range}: Outputs confined between 0 and 1 may restrict the expressiveness and flexibility of the model.
+\end{itemize}
+
+\textbf{Recommendation}: To mitigate issues associated with sigmoid activations, it is advisable to adopt activation functions such as Rectified Linear Unit (ReLU) or Leaky ReLU. These alternatives alleviate vanishing gradient problems and provide unbounded output ranges, thereby enhancing the model's learning capacity and efficiency.
+
+\subsection{Comprehensive Parameter Calculation}
+
+A meticulous parameter calculation ensures alignment between the implemented architecture and the model summaries, thereby validating architectural consistency.
+
+\subsubsection{Encoder Layers}
+
+\begin{enumerate}
+    \item \textbf{Linear1}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 9
+        \item \textbf{Output Features}: 307
+        \item \textbf{Parameters}: \( 9 \times 307 + 307 = 3,070 \)
+    \end{itemize}
+    
+    \item \textbf{Linear4}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 307
+        \item \textbf{Output Features}: 153
+        \item \textbf{Parameters}: \( 307 \times 153 + 153 = 47,124 \)
+    \end{itemize}
+    
+    \item \textbf{Linear7 \& Linear8}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 153
+        \item \textbf{Output Features}: 1414
+        \item \textbf{Parameters (each)}: \( 153 \times 1414 + 1414 = 217,756 \)
+        \item \textbf{Total for both}: \( 217,756 \times 2 = 435,512 \)
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Total Encoder Parameters}: \( 3,070 + 47,124 + 435,512 = 485,706 \)
+
+\subsubsection{Decoder Layers}
+
+\begin{enumerate}
+    \item \textbf{Linear9}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 1423 (1414 latent + 9 condition)
+        \item \textbf{Output Features}: 153
+        \item \textbf{Parameters}: \( 1423 \times 153 + 153 = 217,872 \)
+    \end{itemize}
+    
+    \item \textbf{Linear12}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 153
+        \item \textbf{Output Features}: 307
+        \item \textbf{Parameters}: \( 153 \times 307 + 307 = 47,278 \)
+    \end{itemize}
+    
+    \item \textbf{Linear15}:
+    \begin{itemize}
+        \item \textbf{Input Features}: 307
+        \item \textbf{Output Features}: 9
+        \item \textbf{Parameters}: \( 307 \times 9 + 9 = 2,772 \)
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Total Decoder Parameters}: \( 217,872 + 47,278 + 2,772 = 267,922 \)
+
+\subsubsection{Grand Total Parameters}
+
+\begin{itemize}
+    \item \textbf{Encoder}: 485,706
+    \item \textbf{Decoder}: 267,922
+    \item \textbf{Total}: \( 485,706 + 267,922 = 753,628 \)
+\end{itemize}
+
+\textbf{Consistency}:
+
+\begin{itemize}
+    \item \texttt{torchsummary}: Reports a total of 753,628 parameters, corroborating the manual calculation.
+    \item \texttt{torchinfo}: Reports 800,752 parameters, suggesting a discrepancy likely due to the recursive interpretation of \texttt{Sequential} blocks within \texttt{torchinfo}.
+\end{itemize}
+
+\subsection{Parameter Distribution and Model Complexity}
+
+The distribution of parameters across different layers and the overall model complexity bear significant implications for the model's performance, capacity, and computational requirements.
+
+\subsubsection{High Latent Dimension (\texttt{LATENTDIM = 1414})}
+
+\textbf{Implications}:
+
+\begin{itemize}
+    \item \textbf{Increased Model Capacity}: Facilitates the capture of more intricate data distributions, enhancing reconstruction and generation capabilities.
+    \item \textbf{Risk of Overfitting}: Elevated latent dimensions may lead to the memorization of training data, potentially compromising generalization to unseen data.
+    \item \textbf{Computational Overhead}: A higher number of parameters results in increased memory usage and computation time, impacting scalability.
+\end{itemize}
+
+\subsubsection{Hidden Layers Configuration (\texttt{hidden\_layers = [307, 153]})}
+
+\begin{itemize}
+    \item \textbf{Encoder}:
+    \begin{itemize}
+        \item \textbf{First Hidden Layer}: 307 neurons.
+        \item \textbf{Second Hidden Layer}: 153 neurons.
+    \end{itemize}
+    \item \textbf{Decoder}:
+    \begin{itemize}
+        \item Mirrors the encoder's hidden layers in reverse, ensuring symmetry and balanced learning across the network.
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Activation Function Choice (\texttt{Sigmoid})}
+
+\textbf{Pros}:
+
+\begin{itemize}
+    \item \textbf{Bounded Outputs}: Stabilizes training by confining outputs within a specific range.
+\end{itemize}
+
+\textbf{Cons}:
+
+\begin{itemize}
+    \item \textbf{Vanishing Gradients}: Gradients diminish as inputs move away from the origin, potentially hindering learning in deeper networks.
+    \item \textbf{Limited Range}: Outputs confined between 0 and 1 may restrict the expressiveness and flexibility of the model.
+\end{itemize}
+
+\textbf{Recommendation}: To mitigate issues associated with sigmoid activations, it is advisable to adopt activation functions such as Rectified Linear Unit (ReLU) or Leaky ReLU. These alternatives alleviate vanishing gradient problems and provide unbounded output ranges, thereby enhancing the model's learning capacity and efficiency.
+
+\subsection{Activation Function Impact}
+
+The selection of activation functions plays a pivotal role in the training dynamics and overall performance of the CVAE.
+
+\subsubsection{Choice of Activation: Sigmoid}
+
+\textbf{Characteristics}:
+
+\begin{itemize}
+    \item \textbf{Range}: (0, 1)
+    \item \textbf{Derivative}: \( \sigma'(x) = \sigma(x)(1 - \sigma(x)) \)
+\end{itemize}
+
+\textbf{Pros}:
+
+\begin{itemize}
+    \item \textbf{Smooth Nonlinearity}: Facilitates the modeling of complex functions by introducing smooth, differentiable transformations.
+\end{itemize}
+
+\textbf{Cons}:
+
+\begin{itemize}
+    \item \textbf{Vanishing Gradients}: Gradients diminish as inputs move away from the origin, potentially hindering learning in deeper networks.
+    \item \textbf{Limited Range}: Outputs confined between 0 and 1 may restrict the expressiveness and flexibility of the model.
+\end{itemize}
+
+\textbf{Recommendation}: To mitigate issues associated with sigmoid activations, it is advisable to adopt activation functions such as Rectified Linear Unit (ReLU) or Leaky ReLU. These alternatives alleviate vanishing gradient problems and provide unbounded output ranges, thereby enhancing the model's learning capacity and efficiency.
+
+\subsection{Conclusion}
+
+This architectural analysis of a Conditional Variational AutoEncoder delineates the critical components and design choices that underpin its functionality for positional data prediction conditioned on momenta. Through meticulous mapping of each layer to the implemented code and rigorous validation of parameter distributions, the study affirms architectural consistency and integrity. Furthermore, the evaluation of activation functions and latent space dimensions elucidates the trade-offs between model capacity, generalization, and computational efficiency. Addressing the identified parameter count discrepancies and considering alternative activation functions may further optimize the model's performance and robustness in future implementations.
+
+\end{document}

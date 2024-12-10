@@ -1,0 +1,278 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath, amssymb}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\geometry{
+    a4paper,
+    left=25mm,
+    right=25mm,
+    top=25mm,
+    bottom=25mm,
+}
+
+\title{Comprehensive Explanation of the CVAE Implementation}
+\author{A. Ghanaatian}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+%\tableofcontents
+
+\section{Overview}
+
+The goal is to train a Conditional Variational Autoencoder (CVAE) to solve an inverse problem: predicting the initial positions of atoms (Carbon, Oxygen, Sulfur) in an atomic explosion based on their corresponding momenta. The dataset comprises 3D positions and momenta for each atom, structured in a CSV format.
+
+\section{Concept and Mechanism}
+
+\subsection{Variational Autoencoder Foundation}
+
+\begin{enumerate}[label=\alph*.]
+    \item \textbf{Encoder}: Transforms input data (positions) into a latent probabilistic space characterized by mean (\(\mu\)) and log-variance (\(\log \text{var}\)).
+    \item \textbf{Reparameterization Trick}: Samples latent variables \( z \) from the learned distribution \( q(z \mid x, y) \) using \(\mu\) and \(\log \text{var}\).
+    \item \textbf{Decoder}: Reconstructs the input data from the sampled latent variables and conditional inputs (momenta).
+\end{enumerate}
+
+\subsection{Conditional Extension}
+
+\begin{enumerate}[label=\alph*.]
+    \item \textbf{Conditional Input}: Incorporates momenta (\( y \)) as a conditional variable, enabling the CVAE to generate position predictions conditioned on specific momentum values.
+    \item \textbf{Data Flow}: During training, both positions (\( x \)) and momenta (\( y \)) are used. During inference (testing), latent variables are sampled from the training distribution and combined with test momenta to predict positions.
+\end{enumerate}
+
+\section{Algorithm Workflow}
+
+\subsection{Input Processing}
+
+\begin{enumerate}[label=\alph*.]
+    \item \textbf{Data Loading}: Reads positions and momenta from a CSV file using Pandas.
+    \item \textbf{Data Splitting}: Divides the data into Training (70\%), Validation (15\%), and Test (15\%) sets.
+    \item \textbf{Normalization}: Applies specified normalization methods to positions and momenta to ensure numerical stability and improve training efficiency. The normalization is invertible to retrieve original scales during evaluation.
+\end{enumerate}
+
+\subsection{Learning Conditional Distributions}
+
+\begin{enumerate}[label=\alph*.]
+    \item \textbf{Encoder Architecture}: Comprises multiple hidden layers with configurable dimensions and activation functions. It processes concatenated positions and momenta to learn the latent distribution.
+    \item \textbf{Latent Space}: The encoder outputs \(\mu\) and \(\log \text{var}\) defining the latent Gaussian distribution \( q(z \mid x, y) \).
+\end{enumerate}
+
+\subsection{Data Reconstruction and Sampling}
+
+\begin{enumerate}[label=\alph*.]
+    \item \textbf{Reparameterization}: Samples latent variables \( z \) using the reparameterization trick to allow gradient flow.
+    \item \textbf{Decoder Architecture}: Mirrors the encoder with reversible hidden layer dimensions. It reconstructs positions from \( z \) and momenta \( y \).
+\end{enumerate}
+
+\subsection{Output}
+
+\begin{enumerate}[label=\alph*.]
+    \item \textbf{Synthetic Data Generation}: After training, the CVAE can generate predicted positions by sampling from the latent space conditioned on given momenta. These predictions are exported for further analysis.
+\end{enumerate}
+
+\section{Ensuring Data Integrity}
+
+\subsection{Data Leakage Prevention}
+
+\begin{enumerate}[label=\alph*.]
+    \item \textbf{Training Phase}: The encoder learns latent representations solely from the training data.
+    \item \textbf{Inference Phase}: During testing, latent variables are sampled based on the training distribution parameters (\(\mu\) and \(\log \text{var}\) from the training phase), ensuring that test positions are never directly encoded or utilized, thereby preventing data leakage.
+\end{enumerate}
+
+\section{Loss Function and Regularization}
+
+\subsection{Overall Loss Function}
+
+The overall loss function \( \mathcal{L} \) is a combination of the Reconstruction Loss, KL Divergence, Energy Loss, and regularization terms. It is defined as:
+
+\[
+\mathcal{L} = \mathcal{L}_{\text{Reconstruction}} + \beta \cdot \mathcal{L}_{\text{KL}} + \lambda_{\text{Energy}} \cdot \mathcal{L}_{\text{Energy}} + \mathcal{R}
+\]
+
+where:
+\begin{itemize}
+    \item \( \mathcal{L}_{\text{Reconstruction}} \) is the Reconstruction Loss.
+    \item \( \mathcal{L}_{\text{KL}} \) is the KL Divergence.
+    \item \( \mathcal{L}_{\text{Energy}} \) is the Energy Loss.
+    \item \( \beta \) is a hyperparameter that scales the KL Divergence.
+    \item \( \lambda_{\text{Energy}} \) is the weight for the Energy Loss.
+    \item \( \mathcal{R} \) represents the regularization terms.
+\end{itemize}
+
+\subsection{Loss Components}
+
+\begin{enumerate}[label=\alph*.]
+    \item \textbf{Reconstruction Loss}: Quantifies the Mean Squared Error (MSE) between the actual positions \( \mathbf{x} \) and the reconstructed positions \( \hat{\mathbf{x}} \).
+    \[
+    \mathcal{L}_{\text{Reconstruction}} = \frac{1}{N} \sum_{i=1}^{N} \| \mathbf{x}_i - \hat{\mathbf{x}}_i \|^2
+    \]
+    where \( N \) is the number of data samples.
+
+    \item \textbf{KL Divergence}: Encourages the latent space to adhere to a standard normal distribution, promoting smoothness and facilitating effective sampling.
+    \[
+    \mathcal{L}_{\text{KL}} = -\frac{1}{2} \sum_{j=1}^{J} \left(1 + \log(\sigma_j^2) - \mu_j^2 - \sigma_j^2 \right)
+    \]
+    where \( \mu_j \) and \( \sigma_j \) are the mean and standard deviation of the latent variables, respectively, and \( J \) is the dimensionality of the latent space.
+
+    \item \textbf{Energy Loss}: Integrates physical constraints by minimizing the discrepancy between Kinetic Energy (KE) and Potential Energy (PE).
+    \[
+    \mathcal{L}_{\text{Energy}} = \frac{1}{N} \sum_{i=1}^{N} \left( \frac{|\text{KE}_i - \text{PE}_i|}{|\text{KE}_i| + \epsilon} \right)^2
+    \]
+    where \( \epsilon \) is a small constant to prevent division by zero.
+
+\end{enumerate}
+
+\subsection{Regularization Techniques}
+
+The model employs conditional regularization strategies, enabling the use of L1 and/or L2 regularization based on configuration flags. Additionally, the \(\beta\)-VAE approach scales the KL Divergence to balance reconstruction accuracy and latent space regularization.
+
+\begin{enumerate}[label=\alph*.]
+    \item \textbf{L1 Regularization (Lasso)}: Promotes sparsity by adding the sum of absolute weights.
+    \[
+    \mathcal{R}_{\text{L1}} = \lambda_{\text{L1}} \sum_{k=1}^{K} |w_k|
+    \]
+    where \( w_k \) are the model weights and \( \lambda_{\text{L1}} \) is the regularization coefficient. This term is included only if L1 regularization is enabled.
+
+    \item \textbf{L2 Regularization (Ridge)}: Prevents overfitting by adding the sum of squared weights.
+    \[
+    \mathcal{R}_{\text{L2}} = \lambda_{\text{L2}} \sum_{k=1}^{K} w_k^2
+    \]
+    where \( \lambda_{\text{L2}} \) is the regularization coefficient. This term is included only if L2 regularization is enabled.
+
+    \item \textbf{\(\beta\)-VAE}: Adjusts the weight of the KL Divergence to control the trade-off between reconstruction quality and latent space regularization.
+    \[
+    \mathcal{L}_{\text{KL}}^{\beta\text{-VAE}} = \beta \cdot \mathcal{L}_{\text{KL}}
+    \]
+    where \( \beta \) is a hyperparameter.
+
+\end{enumerate}
+
+\subsection{Combined Regularization}
+
+The total regularization term \( \mathcal{R} \) is a combination of L1 and L2 regularizations based on their respective flags:
+
+\[
+\mathcal{R} = \mathcal{R}_{\text{L1}} + \mathcal{R}_{\text{L2}}
+\]
+
+\subsection{Final Loss Function}
+
+Integrating all components, the final loss function \( \mathcal{L} \) is expressed as:
+
+\[
+\mathcal{L} = \mathcal{L}_{\text{Reconstruction}} + \beta \cdot \mathcal{L}_{\text{KL}} + \lambda_{\text{Energy}} \cdot \mathcal{L}_{\text{Energy}} + \lambda_{\text{L1}} \cdot \sum_{k=1}^{K} |w_k| + \lambda_{\text{L2}} \cdot \sum_{k=1}^{K} w_k^2
+\]
+
+This formulation allows for flexible incorporation of regularization terms based on the configuration settings:
+
+\begin{itemize}
+    \item If L1 regularization is disabled, \( \lambda_{\text{L1}} = 0 \).
+    \item If L2 regularization is disabled, \( \lambda_{\text{L2}} = 0 \).
+    \item The \(\beta\)-VAE term is inherently included through the scaling of the KL Divergence.
+\end{itemize}
+
+\subsection{Energy Loss Implementation}
+
+The Energy Loss \( \mathcal{L}_{\text{Energy}} \) is computed by first calculating the Kinetic Energy (KE) from the momenta and the Potential Energy (PE) from the reconstructed positions. The discrepancy between KE and PE is then quantified and penalized:
+
+\begin{enumerate}[label=\alph*.]
+    \item \textbf{Kinetic Energy (KE)}:
+    \[
+    \text{KE}_i = \frac{|\mathbf{p}_{C,i}|^2}{2m_C} + \frac{|\mathbf{p}_{O,i}|^2}{2m_O} + \frac{|\mathbf{p}_{S,i}|^2}{2m_S}
+    \]
+    where \( \mathbf{p}_{C,i}, \mathbf{p}_{O,i}, \mathbf{p}_{S,i} \) are the momenta of Carbon, Oxygen, and Sulfur atoms respectively for the \( i \)-th sample, and \( m_C, m_O, m_S \) are their masses.
+
+    \item \textbf{Potential Energy (PE)}:
+    \[
+    \text{PE}_i = \frac{4}{r_{CO,i}} + \frac{4}{r_{CS,i}} + \frac{4}{r_{OS,i}}
+    \]
+    where \( r_{CO,i}, r_{CS,i}, r_{OS,i} \) are the distances between Carbon-Oxygen, Carbon-Sulfur, and Oxygen-Sulfur atoms respectively for the \( i \)-th sample.
+
+    \item \textbf{Energy Difference}:
+    \[
+    \text{EnergyDiff}_i = \frac{|\text{KE}_i - \text{PE}_i|}{|\text{KE}_i| + \epsilon}
+    \]
+    \[
+    \mathcal{L}_{\text{Energy}} = \frac{1}{N} \sum_{i=1}^{N} (\text{EnergyDiff}_i)^2
+    \]
+    where \( \epsilon \) is a small constant to prevent division by zero.
+\end{enumerate}
+
+\subsection{Summary}
+
+The comprehensive loss function ensures that the model not only reconstructs the positions accurately but also maintains a well-structured latent space and adheres to the underlying physical laws governing kinetic and potential energies. Conditional regularization further enhances the model's generalization capabilities by preventing overfitting and promoting sparsity when required.
+
+\subsection{Implementation Notes}
+\begin{itemize}
+    \item \textbf{Conditional Regularization}: The inclusion of $L_1$ and $L_2$ regularization is controlled via configuration flags. If a particular regularization is disabled, its corresponding $\lambda$ coefficient is set to zero, effectively removing its influence from the overall loss.
+    
+    \item \textbf{$\beta$-VAE Scaling}: The hyperparameter $\beta$ allows fine-tuning the emphasis on the KL Divergence term, enabling a balance between reconstruction fidelity and latent space regularization.
+    
+    \item \textbf{Energy Loss Weight}: The hyperparameter $\lambda_{\text{Energy}}$ adjusts the impact of the Energy Loss relative to the other loss components, ensuring that physical constraints are adequately enforced during training.
+\end{itemize}
+
+These detailed formulations provide a clear and precise mathematical foundation for the loss function and regularization strategies employed in the model, aligning closely with the implemented Python script.
+
+
+
+\section{Training Process}
+
+\subsection{Configuration and Hyperparameters}
+
+\begin{enumerate}[label=\alph*.]
+    \item \textbf{Flexibility}: All hyperparameters, including learning rate, batch size, hidden dimensions, number of layers, activation functions, normalization methods, and regularization parameters, are configurable at the beginning of the script.
+    \item \textbf{Hidden Layers}: Defined as a list where each subsequent layer doubles the size of the previous one, e.g., [64, 128, 256].
+\end{enumerate}
+
+\subsection{Early Stopping}
+
+\begin{enumerate}[label=\alph*.]
+    \item \textbf{Mechanism}: Monitors validation loss and stops training if no improvement is observed for a specified number of epochs (patience), with a minimum change threshold (\text{min\_delta}).
+\end{enumerate}
+
+\subsection{Mixed Precision Training}
+
+\begin{enumerate}[label=\alph*.]
+    \item \textbf{Optimization}: Optionally enables mixed-precision training to accelerate computation and reduce memory usage without compromising model performance.
+\end{enumerate}
+
+\subsection{Learning Curves}
+
+\begin{enumerate}[label=\alph*.]
+    \item \textbf{Visualization}: Plots two separate learning curves---one for the first 10 epochs and another for the remaining epochs---to monitor training and validation loss progression. The training loss excludes regularization terms to maintain consistency with the validation scale.
+\end{enumerate}
+
+\section{Evaluation Metrics}
+
+\subsection{Mean Relative Error (MRE)}
+
+\begin{enumerate}[label=\alph*.]
+    \item \textbf{Definition}:
+    \[
+    \text{MRE} = \frac{|\text{Real Positions} - \text{Predicted Positions}|}{|\text{Real Positions}| + \epsilon} \times 100
+    \]
+    \item \textbf{Calculation}: Computes the percentage error for each coordinate (\( x \), \( y \), \( z \)) of each atom and averages them across all data points.
+\end{enumerate}
+
+
+\subsection{Energy Calculations}
+
+
+
+\subsubsection{Error Calculation}
+
+\[
+\text{Error} = \frac{|KE - PE|}{|KE|}
+\]
+
+
+\section{Conclusion}
+
+This CVAE implementation is meticulously designed to predict atomic positions based on momenta while adhering to physical laws governing kinetic and potential energies. The model's flexibility in configuration, coupled with robust training mechanisms and comprehensive evaluation metrics, ensures both performance and reliability. By preventing data leakage and incorporating energy-based constraints, the CVAE not only learns effective latent representations but also maintains physical plausibility in its predictions.
+
+\end{document}

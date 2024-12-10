@@ -1,0 +1,50 @@
+Sample 16269:
+Real Positions:
+Carbon (C): (-1.1557, 1.0389, -0.0000)
+Oxygen (O): (-3.3256, 1.9676, -0.0981)
+Sulfur (S): (1.9198, 0.0000, -0.0000)
+Predicted Positions:
+Carbon (C): (-0.0101, 1.6907, -0.0000)
+Oxygen (O): (-1.7609, 3.0221, 0.0052)
+Sulfur (S): (2.6073, -0.0000, 0.0000)
+---
+Sample 140471:
+Real Positions:
+Carbon (C): (-0.2285, 0.1952, 0.0000)
+Oxygen (O): (-2.5292, 0.3452, 0.1700)
+Sulfur (S): (3.0545, 0.0000, -0.0000)
+Predicted Positions:
+Carbon (C): (-0.0182, 1.6861, -0.0000)
+Oxygen (O): (-1.7498, 3.0295, 0.0032)
+Sulfur (S): (2.6026, -0.0000, 0.0000)
+---
+Sample 78683:
+Real Positions:
+Carbon (C): (0.4296, 3.0775, 0.0000)
+Oxygen (O): (-0.5467, 5.2597, -0.0950)
+Sulfur (S): (1.7875, -0.0000, -0.0000)
+Predicted Positions:
+Carbon (C): (-0.0374, 1.6820, -0.0000)
+Oxygen (O): (-1.7261, 3.0531, -0.0008)
+Sulfur (S): (2.5956, -0.0000, 0.0000)
+---
+Sample 2605:
+Real Positions:
+Carbon (C): (-0.2456, 1.8997, 0.0000)
+Oxygen (O): (-2.2262, 3.3650, -0.0591)
+Sulfur (S): (2.7661, 0.0000, 0.0000)
+Predicted Positions:
+Carbon (C): (0.0072, 1.6977, -0.0000)
+Oxygen (O): (-1.7513, 3.0440, 0.0065)
+Sulfur (S): (2.6134, -0.0000, 0.0000)
+---
+Sample 81156:
+Real Positions:
+Carbon (C): (-0.2168, 2.2121, -0.0000)
+Oxygen (O): (-2.7267, 3.9693, -0.0539)
+Sulfur (S): (3.3675, -0.0000, 0.0000)
+Predicted Positions:
+Carbon (C): (-0.0084, 1.7198, -0.0000)
+Oxygen (O): (-1.6969, 3.0580, 0.0026)
+Sulfur (S): (2.6067, -0.0000, 0.0000)
+---
